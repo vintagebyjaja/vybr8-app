@@ -167,11 +167,11 @@ async function hydrate(supabase: Supabase, rows: Row[], viewerId: string | null)
       : Promise.resolve({ data: [] as { path: string | null; signedUrl: string }[] }),
   ]);
 
-  const statBy = new Map((stats.data ?? []).map((s) => [s.post_id as string, s]));
-  const creatorBy = new Map((creators.data ?? []).map((c) => [c.user_id as string, c.creator_type as CreatorType]));
-  const teamBy = new Map((team.data ?? []).map((t) => [t.user_id as string, t.title as string]));
-  const vybedSet = new Set((vybed.data ?? []).map((v) => v.post_id));
-  const urlBy = new Map((signed.data ?? []).filter((s) => s.path).map((s) => [s.path as string, s.signedUrl]));
+  const statBy = new Map<string, { vybe_count?: number | string | null; comment_count?: number | string | null }>((stats.data ?? []).map((s) => [s.post_id as string, s]));
+  const creatorBy = new Map<string, CreatorType>((creators.data ?? []).map((c) => [c.user_id as string, c.creator_type as CreatorType]));
+  const teamBy = new Map<string, string>((team.data ?? []).map((t) => [t.user_id as string, t.title as string]));
+  const vybedSet = new Set<string>((vybed.data ?? []).map((v) => v.post_id));
+  const urlBy = new Map<string, string>((signed.data ?? []).filter((s) => s.path).map((s) => [s.path as string, s.signedUrl]));
 
   return rows.map((r) => ({
     id: r.id,

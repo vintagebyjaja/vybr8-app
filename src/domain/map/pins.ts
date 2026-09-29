@@ -9,6 +9,8 @@ export type MapVenue = {
   isDemo: boolean;
   x: number;
   y: number;
+  lat: number;
+  lng: number;
   openNow: boolean | null; // null = hours unknown
   photo: { src: string; alt: string; rating: number | null; postId: string; isAlcoholic: boolean } | null;
 };
@@ -20,6 +22,8 @@ export type MapLinkup = {
   when: string;
   x: number;
   y: number;
+  lat: number;
+  lng: number;
   spotsLeft: number;
   capacity: number;
   isAlcoholic: boolean;
@@ -36,6 +40,8 @@ export type MapFriend = {
   venueName: string | null;
   x: number | null; // null when not at a listed place (shown in the side list only)
   y: number | null;
+  lat: number | null;
+  lng: number | null;
 };
 
 /** A food truck that is here right now (checked in with WE'RE HERE, or at an open stop in its window). */
@@ -46,13 +52,21 @@ export type MapTruck = {
   cuisine: string | null;
   x: number;
   y: number;
+  lat: number;
+  lng: number;
   live: boolean;
   until: string | null; // "9:00 PM" in city time
   where: string; // stop name or live note
 };
 
 export type MapData = {
-  city: { slug: string; name: string; region: string };
+  city: {
+    slug: string;
+    name: string;
+    region: string;
+    center: { lat: number; lng: number };
+    bounds: { north: number; south: number; east: number; west: number };
+  };
   venues: MapVenue[];
   linkups: MapLinkup[];
   friends: MapFriend[];

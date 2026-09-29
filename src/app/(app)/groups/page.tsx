@@ -23,7 +23,8 @@ export default async function GroupsPage({ searchParams }: { searchParams: Promi
     <div className="flex flex-col gap-10">
       <header>
         <h1 className="text-4xl font-extrabold">Your <span className="vybe-text">groups</span></h1>
-           <p className="mt-1 max-w-prose text-muted">Family, dating, friends, organizations and FTK (For The Kids). Everyone&rsquo;s tastes in one place, so VYBR8 can plan the day or night knowing what everyone wants.</p>      </header>
+        <p className="mt-1 max-w-prose text-muted">Family, dating, friends, organizations and FTK (For The Kids). Everyone&rsquo;s tastes in one place, so VYBR8 can plan the day or night knowing what everyone wants.</p>
+      </header>
 
       {e && <p role="alert" className="rounded-xl border border-danger/50 p-3 text-sm text-danger">{e}</p>}
       {claimed && <p role="status" className="rounded-xl border border-sky/40 bg-sky/10 p-3 text-sm">Your profile is yours now, and you&rsquo;re still in your family.</p>}

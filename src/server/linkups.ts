@@ -56,7 +56,7 @@ export async function getMyLinkups(viewer: Viewer): Promise<LinkupCard[]> {
     .select("linkup_id, status")
     .eq("user_id", viewer.id)
     .in("status", ["going", "requested", "invited"]);
-  const statusBy = new Map((mine ?? []).map((m) => [m.linkup_id as string, m.status as string]));
+  const statusBy = new Map<string, string>((mine ?? []).map((m) => [m.linkup_id as string, m.status as string]));
   if (!statusBy.size) return [];
   const { data } = await supabase
     .from("linkups")

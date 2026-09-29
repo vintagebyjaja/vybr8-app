@@ -61,7 +61,7 @@ export default async function HomePage({ searchParams }: Search) {
 
       {viewer && map ? (
         <>
-          <VybeMap data={map} cities={CITIES.map((c) => ({ slug: c.slug, name: c.name }))} />
+          <VybeMap data={map} cities={CITIES.map((c) => ({ slug: c.slug, name: c.name }))} mapboxToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN || null} />
           <VybeStatus city={map.city.slug} mine={map.myStatus} canDrink={viewer.is21Plus} />
         </>
       ) : (

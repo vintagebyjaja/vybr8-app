@@ -61,15 +61,16 @@ export async function getMapData(citySlug: string, viewer: Viewer | null): Promi
     }
   }
 
-  const posByBusiness = new Map<string, { x: number; y: number }>();
+  const posByBusiness = new Map<string, { x: number; y: number; lat: number; lng: number }>();
   const venues: MapVenue[] = locations.map((l) => {
-    const { x, y } = project(Number(l.latitude), Number(l.longitude), city.bounds);
+    const lat = Number(l.latitude), lng = Number(l.longitude);
+    const { x, y } = project(lat, lng, city.bounds);
     const b = l.business!;
-    if (!posByBusiness.has(b.id)) posByBusiness.set(b.id, { x, y });
+    if (!posByBusiness.has(b.id)) posByBusiness.set(b.id, { x, y, lat, lng });
     const hours: Hours[] = l.hours.map((h) => ({ weekday: h.weekday, opensAt: h.opens_at, closesAt: h.closes_at }));
     return {
       id: l.id, businessSlug: b.slug, name: b.name, kind: b.kind, priceLevel: b.price_level, logoUrl: b.logo_url, isDemo: b.is_demo,
-      x, y, openNow: hours.length ? isOpenAt(hours, l.timezone, now) : null, photo: photoBy.get(b.id) ?? null,
+      x, y, lat, lng, openNow: hours.length ? isOpenAt(hours, l.timezone, now) : null, photo: photoBy.get(b.id) ?? null,
     };
   });
 
@@ -81,7 +82,10 @@ export async function getMapData(citySlug: string, viewer: Viewer | null): Promi
     const pos = l.business ? posByBusiness.get(l.business.id) : undefined;
     // Link Ups without a listed place sit on a ring around the center so they don't overlap.
     const angle = (i / Math.max(1, lrows.length)) * Math.PI * 2;
-    const fallback = { x: 50 + Math.cos(angle) * 22, y: 50 + Math.sin(angle) * 18 };
+    const fallback = {
+      x: 50 + Math.cos(angle) * 22, y: 50 + Math.sin(angle) * 18,
+      lat: city.center.lat - Math.sin(angle) * 0.02, lng: city.center.lng + Math.cos(angle) * 0.03,
+    };
     return {
       id: l.id, title: l.title, occasion: l.occasion, when: formatWhen(new Date(l.starts_at), findCity(city.slug).timezone),
       ...(pos ?? fallback), spotsLeft: spotsLeft(l.capacity, takenBy.get(l.id) ?? 1), capacity: l.capacity,
@@ -96,7 +100,7 @@ export async function getMapData(citySlug: string, viewer: Viewer | null): Promi
       userId: s.user_id, username: s.profile?.username ?? "friend", name: s.profile?.display_name ?? s.profile?.username ?? "Friend",
       intent: s.intent, note: s.note,
       venueName: s.business_id ? (locations.find((l) => l.business!.id === s.business_id)?.business!.name ?? null) : null,
-      x: pos?.x ?? null, y: pos?.y ?? null,
+      x: pos?.x ?? null, y: pos?.y ?? null, lat: pos?.lat ?? null, lng: pos?.lng ?? null,
     };
   });
 
@@ -112,10 +116,11 @@ export async function getMapData(citySlug: string, viewer: Viewer | null): Promi
       && new Date(t.start_at) <= now && new Date(t.end_at) > now;
     if (!live && !atStop) continue;
     if (t.latitude == null || t.longitude == null) continue;
-    const { x, y } = project(Number(t.latitude), Number(t.longitude), city.bounds);
+    const lat = Number(t.latitude), lng = Number(t.longitude);
+    const { x, y } = project(lat, lng, city.bounds);
     const until = live ? t.live_until : t.end_at;
     trucks.push({
-      id: t.business_id, slug: t.slug, name: t.name, cuisine: t.cuisine, x, y, live,
+      id: t.business_id, slug: t.slug, name: t.name, cuisine: t.cuisine, x, y, lat, lng, live,
       until: until ? formatTime(until, city.timezone) : null,
       where: (live ? t.live_note : null) ?? t.location_name ?? t.live_note ?? "Parked nearby",
     });
@@ -123,7 +128,7 @@ export async function getMapData(citySlug: string, viewer: Viewer | null): Promi
 
   const m = mine.data as { intent: MapFriend["intent"]; note: string | null; expires_at: string } | null;
   return {
-    city: { slug: city.slug, name: city.name, region: city.region },
+    city: { slug: city.slug, name: city.name, region: city.region, center: city.center, bounds: city.bounds },
     venues, linkups, friends, trucks,
     myStatus: m ? { intent: m.intent, note: m.note, expiresAt: m.expires_at } : null,
   };

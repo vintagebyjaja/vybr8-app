@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { setCity } from "@/app/(app)/map-actions";
+import { StreetMap, type StreetPin } from "@/components/map/StreetMap";
 import type { MapData, MapFriend, MapLinkup, MapTruck, MapVenue } from "@/domain/map/pins";
 import { OCCASIONS, type Occasion } from "@/domain/linkups/linkups";
 
@@ -27,8 +28,10 @@ type Selected = { type: "venue"; v: MapVenue } | { type: "linkup"; l: MapLinkup 
  * The Vybe Map: the VYBR8 frequency drawn as a living contour map of the city.
  * Waves bend around busy spots; pins sit at each place's real coordinates.
  */
-export function VybeMap({ data, cities }: { data: MapData; cities: { slug: string; name: string }[] }) {
+export function VybeMap({ data, cities, mapboxToken }: { data: MapData; cities: { slug: string; name: string }[]; mapboxToken?: string | null }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Street map when a Mapbox token is set; the frequency map is the fallback (no token, or Mapbox fails to load).
+  const [street, setStreet] = useState(!!mapboxToken);
   const [filter, setFilter] = useState<Filter>("all");
   const [selected, setSelected] = useState<Selected>(null);
   const [pending, start] = useTransition();
@@ -58,6 +61,7 @@ export function VybeMap({ data, cities }: { data: MapData; cities: { slug: strin
   );
 
   useEffect(() => {
+    if (street) return;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
@@ -110,7 +114,92 @@ export function VybeMap({ data, cities }: { data: MapData; cities: { slug: strin
     window.addEventListener("resize", onResize);
     if (!reduce) raf = requestAnimationFrame(loop);
     return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", onResize); };
-  }, [hotspots]);
+  }, [hotspots, street]);
+
+  const venueNode = (v: MapVenue): ReactNode => (
+    <button
+      type="button"
+      onClick={() => setSelected({ type: "venue", v })}
+      aria-label={`${v.name}${v.openNow === true ? ", open now" : v.openNow === false ? ", closed" : ""}`}
+      className="block"
+    >
+      <span className="relative block">
+        {v.photo ? (
+          // eslint-disable-next-line @next/next/no-img-element -- signed or demo URLs; small thumbnails
+          <img src={v.photo.src} alt="" className="size-14 rounded-2xl border-2 border-ink object-cover shadow-lg ring-2 ring-coral/60" />
+        ) : (
+          <span className="vybe-ring grid size-11 place-items-center rounded-full font-display text-sm font-extrabold">
+            {v.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- business logo
+              <img src={v.logoUrl} alt="" className="size-full rounded-full object-cover" />
+            ) : (
+              v.name.slice(0, 1)
+            )}
+          </span>
+        )}
+        {v.openNow !== null && (
+          <span className={`absolute -right-1 -top-1 size-3.5 rounded-full border-2 border-ink ${v.openNow ? "bg-mint" : "bg-faint"}`} />
+        )}
+      </span>
+    </button>
+  );
+
+  const truckNode = (t: MapTruck): ReactNode => (
+    <button
+      type="button"
+      onClick={() => setSelected({ type: "truck", t })}
+      aria-label={`${t.name}, food truck here now${t.until ? ` until ${t.until}` : ""}`}
+      className="block"
+    >
+      <span className="relative flex flex-col items-center">
+        <span className="grid size-11 place-items-center rounded-xl border-2 border-sky bg-surface-2 font-display text-sm font-extrabold shadow-lg">
+          {t.name.slice(0, 1)}
+        </span>
+        <span className="-mt-1.5 rounded-md bg-sky px-1 text-[9px] font-extrabold leading-4 tracking-wider text-ink">TRUCK</span>
+        {t.live && <span className="absolute -right-1 -top-1 size-3.5 animate-pulse rounded-full border-2 border-ink bg-coral" />}
+      </span>
+    </button>
+  );
+
+  const linkupNode = (l: MapLinkup): ReactNode => (
+    <button
+      type="button"
+      onClick={() => setSelected({ type: "linkup", l })}
+      className="vybe-gradient block whitespace-nowrap rounded-full px-3 py-1 text-xs font-extrabold text-ink shadow-lg"
+    >
+      {OCCASIONS[l.occasion as Occasion] ?? "Link Up"} · {l.spotsLeft} {l.spotsLeft === 1 ? "spot" : "spots"}
+    </button>
+  );
+
+  const friendNode = (f: MapFriend): ReactNode => (
+    <button
+      type="button"
+      onClick={() => setSelected({ type: "friend", f })}
+      className="grid size-9 place-items-center rounded-full border-2 border-sky bg-surface-2 font-display text-xs font-extrabold shadow-lg"
+      aria-label={`${f.name} wants to ${INTENT_LABEL[f.intent].toLowerCase()}`}
+    >
+      {f.name.slice(0, 1).toUpperCase()}
+    </button>
+  );
+
+  // Frequency-map layout: percentage positions inside the box.
+  type FlatPin = { key: string; kind: "venue" | "truck" | "linkup" | "friend"; left: string; top: string; z: number; node: ReactNode };
+  const flatPins: FlatPin[] = [
+    ...venues.map((v) => ({ key: `v-${v.id}`, kind: "venue" as const, left: `${v.x}%`, top: `${v.y}%`, z: 1, node: venueNode(v) })),
+    ...trucks.map((t) => ({ key: `t-${t.id}`, kind: "truck" as const, left: `${t.x}%`, top: `${t.y}%`, z: 10, node: truckNode(t) })),
+    ...linkups.map((l) => ({ key: `l-${l.id}`, kind: "linkup" as const, left: `${l.x}%`, top: `${l.y}%`, z: 10, node: linkupNode(l) })),
+    ...friends.map((f, i) => ({ key: `f-${f.userId}`, kind: "friend" as const, left: `calc(${f.x}% - ${28 + i * 8}px)`, top: `calc(${f.y}% - 30px)`, z: 10, node: friendNode(f) })),
+  ];
+
+  // Street-map layout: real coordinates; Mapbox keeps each pin in place as the map moves.
+  const streetPins: StreetPin[] = [
+    ...venues.map((v) => ({ key: `v-${v.id}`, lat: v.lat, lng: v.lng, z: 1, node: venueNode(v) })),
+    ...trucks.map((t) => ({ key: `t-${t.id}`, lat: t.lat, lng: t.lng, z: 2, node: truckNode(t) })),
+    ...linkups.map((l) => ({ key: `l-${l.id}`, lat: l.lat, lng: l.lng, z: 3, offset: [0, 34] as [number, number], node: linkupNode(l) })),
+    ...friends
+      .filter((f) => f.lat !== null && f.lng !== null)
+      .map((f, i) => ({ key: `f-${f.userId}`, lat: f.lat!, lng: f.lng!, z: 3, offset: [-28 - i * 8, -30] as [number, number], node: friendNode(f) })),
+  ];
 
   const empty = !data.venues.length && !data.linkups.length && !(data.trucks ?? []).length;
 
@@ -148,81 +237,22 @@ export function VybeMap({ data, cities }: { data: MapData; cities: { slug: strin
       </div>
 
       <div className="relative aspect-[4/5] w-full overflow-hidden rounded-[var(--radius-card)] border border-line bg-[radial-gradient(120%_90%_at_50%_40%,#151222_0%,var(--color-ink)_75%)] sm:aspect-[16/10]">
-        <canvas ref={canvasRef} aria-hidden className="absolute inset-0 size-full" />
-
-        {venues.map((v) => (
-          <button
-            key={v.id}
-            type="button"
-            onClick={() => setSelected({ type: "venue", v })}
-            aria-label={`${v.name}${v.openNow === true ? ", open now" : v.openNow === false ? ", closed" : ""}`}
-            className="absolute -translate-x-1/2 -translate-y-1/2 focus-visible:z-20"
-            style={{ left: `${v.x}%`, top: `${v.y}%` }}
-          >
-            <span className="relative block">
-              {v.photo ? (
-                // eslint-disable-next-line @next/next/no-img-element -- signed or demo URLs; small thumbnails
-                <img src={v.photo.src} alt="" className="size-14 rounded-2xl border-2 border-ink object-cover shadow-lg ring-2 ring-coral/60" />
-              ) : (
-                <span className="vybe-ring grid size-11 place-items-center rounded-full font-display text-sm font-extrabold">
-                  {v.logoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- business logo
-                    <img src={v.logoUrl} alt="" className="size-full rounded-full object-cover" />
-                  ) : (
-                    v.name.slice(0, 1)
-                  )}
-                </span>
-              )}
-              {v.openNow !== null && (
-                <span className={`absolute -right-1 -top-1 size-3.5 rounded-full border-2 border-ink ${v.openNow ? "bg-mint" : "bg-faint"}`} />
-              )}
-            </span>
-          </button>
-        ))}
-
-        {trucks.map((t) => (
-          <button
-            key={`truck-${t.id}`}
-            type="button"
-            onClick={() => setSelected({ type: "truck", t })}
-            aria-label={`${t.name}, food truck here now${t.until ? ` until ${t.until}` : ""}`}
-            className="absolute z-10 -translate-x-1/2 -translate-y-1/2 focus-visible:z-20"
-            style={{ left: `${t.x}%`, top: `${t.y}%` }}
-          >
-            <span className="relative flex flex-col items-center">
-              <span className="grid size-11 place-items-center rounded-xl border-2 border-sky bg-surface-2 font-display text-sm font-extrabold shadow-lg">
-                {t.name.slice(0, 1)}
-              </span>
-              <span className="-mt-1.5 rounded-md bg-sky px-1 text-[9px] font-extrabold leading-4 tracking-wider text-ink">TRUCK</span>
-              {t.live && <span className="absolute -right-1 -top-1 size-3.5 animate-pulse rounded-full border-2 border-ink bg-coral" />}
-            </span>
-          </button>
-        ))}
-
-        {linkups.map((l) => (
-          <button
-            key={l.id}
-            type="button"
-            onClick={() => setSelected({ type: "linkup", l })}
-            className="vybe-gradient absolute z-10 -translate-x-1/2 translate-y-5 whitespace-nowrap rounded-full px-3 py-1 text-xs font-extrabold text-ink shadow-lg"
-            style={{ left: `${l.x}%`, top: `${l.y}%` }}
-          >
-            {OCCASIONS[l.occasion as Occasion] ?? "Link Up"} · {l.spotsLeft} {l.spotsLeft === 1 ? "spot" : "spots"}
-          </button>
-        ))}
-
-        {friends.map((f, i) => (
-          <button
-            key={f.userId}
-            type="button"
-            onClick={() => setSelected({ type: "friend", f })}
-            className="absolute z-10 grid size-9 place-items-center rounded-full border-2 border-sky bg-surface-2 font-display text-xs font-extrabold shadow-lg"
-            style={{ left: `calc(${f.x}% - ${28 + i * 8}px)`, top: `calc(${f.y}% - 30px)` }}
-            aria-label={`${f.name} wants to ${INTENT_LABEL[f.intent].toLowerCase()}`}
-          >
-            {f.name.slice(0, 1).toUpperCase()}
-          </button>
-        ))}
+        {street && mapboxToken ? (
+          <StreetMap token={mapboxToken} bounds={data.city.bounds} pins={streetPins} onFail={() => setStreet(false)} />
+        ) : (
+          <>
+            <canvas ref={canvasRef} aria-hidden className="absolute inset-0 size-full" />
+            {flatPins.map((p) => (
+              <div
+                key={p.key}
+                className={`absolute ${p.kind === "linkup" ? "-translate-x-1/2 translate-y-5" : p.kind === "friend" ? "" : "-translate-x-1/2 -translate-y-1/2"}`}
+                style={{ left: p.left, top: p.top, zIndex: p.z }}
+              >
+                {p.node}
+              </div>
+            ))}
+          </>
+        )}
 
         {empty && (
           <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 rounded-2xl bg-ink/80 p-5 text-center backdrop-blur">
@@ -299,7 +329,7 @@ export function VybeMap({ data, cities }: { data: MapData; cities: { slug: strin
         <span className="inline-flex items-center gap-1.5"><i className="size-2.5 rounded-full border-2 border-sky" /> Friends</span>
         <span className="inline-flex items-center gap-1.5"><i className="vybe-gradient h-2.5 w-5 rounded-full" /> Link Ups</span>
         <span className="inline-flex items-center gap-1.5"><i className="size-2.5 rounded-[3px] border-2 border-sky" /> Food trucks here now</span>
-        <span className="text-faint">Pins use each place&rsquo;s real location. Street-level map coming soon.</span>
+        {!street && <span className="text-faint">Pins use each place&rsquo;s real location.</span>}
       </div>
     </section>
   );

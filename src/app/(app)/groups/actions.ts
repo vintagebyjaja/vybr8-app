@@ -44,7 +44,8 @@ export async function deleteGroup(form: FormData) {
 
 export async function inviteToGroup(form: FormData) {
   const viewer = await requireViewer("/groups");
-     const p = z.object({ group: uuid, username: z.string().trim().transform((u) => u.replace(/^@/, "")).pipe(z.string().min(3).max(30)), relationship: z.string() }).safeParse(Object.fromEntries(form));  const path = `/groups/${form.get("group")}`;
+  const p = z.object({ group: uuid, username: z.string().trim().transform((u) => u.replace(/^@/, "")).pipe(z.string().min(3).max(30)), relationship: z.string() }).safeParse(Object.fromEntries(form));
+  const path = `/groups/${form.get("group")}`;
   if (!p.success) back(path, "Enter their VYBR8 username.");
   const supabase = await createClient();
   const { data: who } = await supabase.from("profiles").select("id").eq("username", p.data!.username).maybeSingle();
