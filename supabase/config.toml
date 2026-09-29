@@ -1,0 +1,35 @@
+# Supabase CLI config for local development (`supabase start`).
+project_id = "vybr8"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]   # `private` is intentionally NOT exposed
+extra_search_path = ["public", "extensions"]
+max_rows = 200
+
+[db]
+port = 54322
+major_version = 16
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false   # local only; turn on in the hosted project
+
+[storage]
+enabled = true
+file_size_limit = "10MiB"
+
+[realtime]
+enabled = true
