@@ -21,6 +21,7 @@ type GLMap = {
   fitBounds(b: [[number, number], [number, number]], o?: Record<string, unknown>): void;
   addControl(c: unknown, position?: string): void;
   on(event: string, f: (e: { error?: { status?: number } }) => void): void;
+  once(event: string, f: () => void): void;
 };
 type GL = {
   accessToken: string;
@@ -67,6 +68,7 @@ export function StreetMap({ token, bounds, pins, onFail }: { token: string; boun
   useEffect(() => {
     let cancelled = false;
     let created: GLMap | null = null;
+    let giveUp = 0;
     const current = markers.current;
     loadGL()
       .then((lib) => {
@@ -83,6 +85,12 @@ export function StreetMap({ token, bounds, pins, onFail }: { token: string; boun
           pitchWithRotate: false,
         });
         created.addControl(new lib.NavigationControl({ showCompass: false }), "top-right");
+        // If the street map hasn't drawn after 15 seconds (blocked token, slow network), fall back to the frequency map.
+        giveUp = window.setTimeout(() => failed.current(), 15000);
+        created.once("load", () => {
+          window.clearTimeout(giveUp);
+          created?.resize();
+        });
         created.on("error", (e) => {
           // A bad or restricted token: fall back to the frequency map instead of a blank box.
           if (e.error?.status === 401 || e.error?.status === 403) failed.current();
@@ -94,6 +102,7 @@ export function StreetMap({ token, bounds, pins, onFail }: { token: string; boun
       });
     return () => {
       cancelled = true;
+      window.clearTimeout(giveUp);
       current.forEach((m) => m.marker.remove());
       current.clear();
       created?.remove();
@@ -139,7 +148,10 @@ export function StreetMap({ token, bounds, pins, onFail }: { token: string; boun
 
   return (
     <>
-      <div ref={box} className="absolute inset-0" />
+      {/* Mapbox's stylesheet makes its container position:relative, so the map gets its own full-size box inside this one. */}
+      <div className="absolute inset-0">
+        <div ref={box} className="h-full w-full" />
+      </div>
       {pins.map((p) => {
         const el = els.get(p.key);
         return el ? createPortal(p.node, el, p.key) : null;
