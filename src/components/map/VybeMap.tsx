@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { setCity } from "@/app/(app)/map-actions";
 import { StreetMap, type StreetPin } from "@/components/map/StreetMap";
+import { ApprovedBadge } from "@/components/places/ApprovedBadge";
 import type { MapData, MapFriend, MapLinkup, MapTruck, MapVenue } from "@/domain/map/pins";
 import { OCCASIONS, type Occasion } from "@/domain/linkups/linkups";
 
@@ -275,7 +276,7 @@ export function VybeMap({ data, cities, mapboxToken }: { data: MapData; cities: 
                   <img src={selected.v.photo.src} alt={selected.v.photo.alt} className="size-16 shrink-0 rounded-xl object-cover" />
                 )}
                 <div className="min-w-0">
-                  <p className="truncate font-display font-bold">{selected.v.name}</p>
+                  <p className="flex min-w-0 items-center gap-1.5"><span className="truncate font-display font-bold">{selected.v.name}</span>{selected.v.approved && <ApprovedBadge small label="Approved" />}</p>
                   <p className="text-xs text-muted">
                     {selected.v.openNow === true ? <span className="text-mint">Open now</span> : selected.v.openNow === false ? "Closed now" : "Hours not listed"}
                     {selected.v.priceLevel ? ` · ${"$".repeat(selected.v.priceLevel)}` : ""}

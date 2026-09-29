@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 /** Paths that require a signed-in user. Everything else is browsable signed out. */
 const PROTECTED_PREFIXES = [
   "/vybe", "/groups", "/verify", "/chef/dashboard", "/food-truck/dashboard", "/health", "/profile/settings", "/friends", "/post/new", "/creators/apply", "/team/creators", "/notifications", "/welcome",
-  "/business/dashboard", "/business/claim", "/admin",
+  "/business/dashboard", "/business/claim", "/admin", "/places",
 ];
 
 /**

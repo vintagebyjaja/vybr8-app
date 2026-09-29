@@ -111,6 +111,12 @@ export default async function ChefPage({ params, searchParams }: Props) {
           </div>
         </div>
         {!c.isListed && c.isOwner && <p className="rounded-xl border border-line p-3 text-sm text-muted">Only you can see this profile right now.</p>}
+        {!c.userId && !c.isDemo && (
+          <p className="rounded-xl border border-coral/40 bg-surface p-3 text-sm">
+            <b>Is this you?</b> <Link href={`/chef/${c.slug}/claim`} className="font-bold text-coral">Claim this chef profile</Link>{" "}
+            <span className="text-muted">to run it and get verified.</span>
+          </p>
+        )}
         {c.isOwner && <Link href="/chef/dashboard" className="inline-flex min-h-11 w-fit items-center rounded-full border border-line px-5 text-sm font-bold hover:bg-surface-2">Edit your Chef Profile</Link>}
 
         {c.currentWorkplaces.length > 0 && (

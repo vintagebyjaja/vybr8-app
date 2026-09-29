@@ -15,14 +15,14 @@ export async function getMapData(citySlug: string, viewer: Viewer | null): Promi
 
   const { data: locs } = await supabase
     .from("business_locations")
-    .select("id, latitude, longitude, timezone, business:businesses ( id, slug, name, kind, price_level, logo_url, is_demo ), hours:business_hours ( weekday, opens_at, closes_at )")
+    .select("id, latitude, longitude, timezone, business:businesses ( id, slug, name, branch_name, kind, price_level, logo_url, is_demo, is_claimed ), hours:business_hours ( weekday, opens_at, closes_at )")
     .eq("city_slug", city.slug)
     .not("latitude", "is", null)
     .limit(300);
 
   type Loc = {
     id: string; latitude: string | number; longitude: string | number; timezone: string;
-    business: { id: string; slug: string; name: string; kind: string; price_level: number | null; logo_url: string | null; is_demo: boolean } | null;
+    business: { id: string; slug: string; name: string; branch_name: string | null; kind: string; price_level: number | null; logo_url: string | null; is_demo: boolean; is_claimed: boolean } | null;
     hours: { weekday: number; opens_at: string; closes_at: string }[];
   };
   const locations = ((locs ?? []) as unknown as Loc[]).filter((l) => l.business);
@@ -69,7 +69,7 @@ export async function getMapData(citySlug: string, viewer: Viewer | null): Promi
     if (!posByBusiness.has(b.id)) posByBusiness.set(b.id, { x, y, lat, lng });
     const hours: Hours[] = l.hours.map((h) => ({ weekday: h.weekday, opensAt: h.opens_at, closesAt: h.closes_at }));
     return {
-      id: l.id, businessSlug: b.slug, name: b.name, kind: b.kind, priceLevel: b.price_level, logoUrl: b.logo_url, isDemo: b.is_demo,
+      id: l.id, businessSlug: b.slug, name: b.branch_name ? `${b.name} · ${b.branch_name}` : b.name, kind: b.kind, priceLevel: b.price_level, logoUrl: b.logo_url, isDemo: b.is_demo, approved: b.is_claimed,
       x, y, lat, lng, openNow: hours.length ? isOpenAt(hours, l.timezone, now) : null, photo: photoBy.get(b.id) ?? null,
     };
   });

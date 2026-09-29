@@ -5,7 +5,7 @@ import { listChefs, type ChefCard } from "@/server/chefs";
 import { listTrucks, type TruckCard } from "@/server/trucks";
 
 export type ItemHit = { id: string; name: string; businessSlug: string; businessName: string; businessKind: string; priceCents: number | null; avgScore: number | null; count: number; category: string };
-export type PlaceHit = { id: string; slug: string; name: string; kind: string; description: string | null; overall: number | null; count: number };
+export type PlaceHit = { id: string; slug: string; name: string; branch_name: string | null; is_claimed: boolean; kind: string; description: string | null; overall: number | null; count: number };
 export type SearchResults = { items: ItemHit[]; places: PlaceHit[]; chefs: ChefCard[]; trucks: TruckCard[] };
 
 const clean = (t: string) => t.replace(/[%_,()]/g, "");
@@ -36,12 +36,12 @@ export async function searchAll(p: ParsedSearch, citySlug: string): Promise<Sear
 
   const placesQ = async (): Promise<PlaceHit[]> => {
     if (p.tab === "chefs" || p.tab === "trucks") return [];
-    let q = supabase.from("businesses").select("id, slug, name, kind, description").is("deleted_at", null).limit(40);
+    let q = supabase.from("businesses").select("id, slug, name, branch_name, is_claimed, kind, description").is("deleted_at", null).limit(40);
     const kinds = p.tab === "drinks" ? DRINK_KINDS : p.tab === "nightlife" ? NIGHTLIFE_KINDS : p.tab === "food" ? FOOD_KINDS : null;
     if (kinds) q = q.in("kind", [...kinds]);
-    if (terms.length && p.tab !== "nightlife") q = q.or(terms.flatMap((t) => [`name.ilike.%${t}%`, `description.ilike.%${t}%`]).join(","));
+    if (terms.length && p.tab !== "nightlife") q = q.or(terms.flatMap((t) => [`name.ilike.%${t}%`, `branch_name.ilike.%${t}%`, `description.ilike.%${t}%`]).join(","));
     const { data } = await q;
-    const rows = (data ?? []) as { id: string; slug: string; name: string; kind: string; description: string | null }[];
+    const rows = (data ?? []) as { id: string; slug: string; name: string; branch_name: string | null; is_claimed: boolean; kind: string; description: string | null }[];
     if (!rows.length) return [];
     const { data: stats } = await supabase.from("place_stats").select("business_id, overall, rating_count").in("business_id", rows.map((r) => r.id));
     const by = new Map(((stats ?? []) as { business_id: string; overall: number | null; rating_count: number }[]).map((s) => [s.business_id, s]));

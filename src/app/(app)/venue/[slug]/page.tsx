@@ -11,8 +11,11 @@ import { getFeed } from "@/server/posts";
 import { getMenu, getPlaceStats } from "@/server/menus";
 import { MenuList } from "@/components/menu/MenuList";
 import { RatePlace } from "@/components/ratings/RatePlace";
+import { ApprovedBadge } from "@/components/places/ApprovedBadge";
+import { placeTitle } from "@/domain/places/places";
+import { setBrand } from "@/app/(app)/places/actions";
 
-type Params = { params: Promise<{ slug: string }> };
+type Params = { params: Promise<{ slug: string }>; searchParams: Promise<{ added?: string }> };
 
 const KIND_LABEL: Record<string, string> = {
   restaurant: "Restaurant", bar: "Bar", cocktail_lounge: "Cocktail lounge", lounge: "Lounge", cigar_lounge: "Cigar lounge",
@@ -23,7 +26,7 @@ async function loadVenue(slug: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("businesses")
-    .select("id, slug, name, kind, description, price_level, website, is_demo, locations:business_locations ( label, city, region, is_primary )")
+    .select("id, slug, name, branch_name, kind, description, price_level, website, is_demo, is_claimed, status, brand_id, brand:brands ( name ), locations:business_locations ( label, address_line1, city, region, postal_code, is_primary )")
     .eq("slug", slug)
     .is("deleted_at", null)
     .maybeSingle();
@@ -32,15 +35,16 @@ async function loadVenue(slug: string) {
 
 export async function generateMetadata({ params }: Params) {
   const venue = await loadVenue((await params).slug);
-  return { title: venue?.name ?? "Venue" };
+  return { title: venue ? placeTitle(venue.name as string, venue.branch_name as string | null) : "Venue" };
 }
 
-export default async function VenuePage({ params }: Params) {
+export default async function VenuePage({ params, searchParams }: Params) {
   const { slug } = await params;
+  const { added } = await searchParams;
   const venue = await loadVenue(slug);
   if (!venue) notFound();
   const viewerP = getViewer();
-  const [viewer, page, perks, menu, stats, chefRows] = await Promise.all([
+  const [viewer, page, perks, menu, stats, chefRows, siblings] = await Promise.all([
     viewerP,
     getFeed({ kind: "business", businessId: venue.id as string }),
     getBirthdayPerks({ businessId: venue.id as string }),
@@ -56,9 +60,26 @@ export default async function VenuePage({ params }: Params) {
       return ((data ?? []) as unknown as { role: string; end_date: string | null; verification_status: string; chef: { slug: string; professional_name: string } | null }[])
         .filter((r) => r.chef && (!r.end_date || r.end_date >= today));
     })(),
+    // Other locations of the same franchise brand.
+    (async () => {
+      if (!venue.brand_id) return [];
+      const supabase = await createClient();
+      const { data } = await supabase
+        .from("businesses")
+        .select("slug, name, branch_name, is_claimed, locations:business_locations ( address_line1, city, region )")
+        .eq("brand_id", venue.brand_id as string)
+        .eq("status", "active")
+        .neq("id", venue.id as string)
+        .is("deleted_at", null)
+        .order("name")
+        .limit(12);
+      return (data ?? []) as unknown as { slug: string; name: string; branch_name: string | null; is_claimed: boolean; locations: { address_line1: string | null; city: string; region: string }[] }[];
+    })(),
   ]);
   if (venue.kind === "food_truck") redirect(`/food-trucks/${venue.slug}`);
-  const locations = (venue.locations ?? []) as { label: string | null; city: string; region: string; is_primary: boolean }[];
+  const locations = (venue.locations ?? []) as { label: string | null; address_line1: string | null; city: string; region: string; postal_code: string | null; is_primary: boolean }[];
+  const brand = (Array.isArray(venue.brand) ? venue.brand[0] : venue.brand) as { name: string } | null;
+  const isStaff = !!viewer?.platformRoles.length;
   const primary = locations.find((l) => l.is_primary) ?? locations[0];
   const plates = page.posts.filter((p) => p.kind === "plate").length;
   const pours = page.posts.filter((p) => p.kind === "pour").length;
@@ -72,8 +93,24 @@ export default async function VenuePage({ params }: Params) {
           {primary && <span>· {primary.label ? `${primary.label}, ` : ""}{primary.city}, {primary.region}</span>}
           {venue.is_demo && <DemoBadge label="Demo venue" />}
         </div>
-        <h1 className="text-4xl font-extrabold">{venue.name}</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-4xl font-extrabold">{placeTitle(venue.name as string, venue.branch_name as string | null)}</h1>
+          {venue.is_claimed && <ApprovedBadge />}
+        </div>
+        {primary?.address_line1 && (
+          <p className="text-sm text-muted">{primary.address_line1}, {primary.city}, {primary.region}{primary.postal_code ? ` ${primary.postal_code}` : ""}</p>
+        )}
+        {venue.status === "pending" && (
+          <p role="status" className="rounded-xl border border-sky/40 bg-sky/10 p-3 text-sm">
+            {added ? "Thanks for adding it! " : ""}The VYBR8 Team is taking a quick look. Only you can see this place until it&rsquo;s live.
+          </p>
+        )}
         {venue.description && <p className="max-w-prose text-muted">{venue.description}</p>}
+        {!venue.is_claimed && !venue.is_demo && (
+          <p className="text-sm text-muted">
+            Own or manage this location? <Link href={`/venue/${venue.slug}/claim`} className="font-bold text-coral">Claim it</Link> to run the listing and get the VYBR8 Approved badge.
+          </p>
+        )}
         <div className="flex flex-wrap gap-3 pt-1">
           <PostButton href={viewer ? `/post/new?venue=${venue.slug}` : `/auth/sign-in?next=/post/new?venue=${venue.slug}`} label="Post your plate here" />
           {venue.website && (
@@ -105,6 +142,36 @@ export default async function VenuePage({ params }: Params) {
           </p>
         )}
       </section>
+
+      {siblings.length > 0 && (
+        <section aria-labelledby="locs-h" className="flex flex-col gap-3">
+          <h2 id="locs-h" className="text-xl font-bold">Other {brand?.name ?? venue.name} locations</h2>
+          <p className="text-xs text-faint">Each location has its own ratings, menu and owner.</p>
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {siblings.map((b) => {
+              const l = b.locations[0];
+              return (
+                <li key={b.slug}>
+                  <Link href={`/venue/${b.slug}`} className="flex flex-col rounded-2xl border border-line bg-surface p-3 hover:bg-surface-2">
+                    <span className="flex flex-wrap items-center gap-2 font-semibold">{placeTitle(b.name, b.branch_name)}{b.is_claimed && <ApprovedBadge small />}</span>
+                    {l && <span className="text-xs text-muted">{l.address_line1 ? `${l.address_line1}, ` : ""}{l.city}, {l.region}</span>}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
+      {isStaff && (
+        <form action={setBrand} className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-line p-3 text-sm">
+          <input type="hidden" name="business" value={venue.id as string} />
+          <input type="hidden" name="slug" value={venue.slug as string} />
+          <label htmlFor="brand" className="font-semibold text-muted">Team · franchise brand</label>
+          <input id="brand" name="brand" defaultValue={brand?.name ?? ""} placeholder="e.g. Chick-fil-A (blank = none)" className="min-h-10 flex-1 rounded-xl border border-line bg-surface px-3" />
+          <button className="min-h-10 rounded-full border border-line px-4 font-bold">Save</button>
+        </form>
+      )}
 
       <section aria-labelledby="menu-h" className="flex flex-col gap-3">
         <h2 id="menu-h" className="text-xl font-bold">Menu &amp; VYBR8 scores</h2>

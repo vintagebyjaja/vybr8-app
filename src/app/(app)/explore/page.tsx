@@ -37,7 +37,12 @@ export default async function ExplorePage({ searchParams }: { searchParams: Prom
           <h1 className="text-3xl font-bold md:text-4xl">Explore</h1>
           <p className="mt-1 text-muted">Plates for the Big Backs. Pours for everyone: coffee, matcha, lemonade, and cocktails for the Liquid Lovers (21+).</p>
         </div>
-        {viewer && <PostButton />}
+        {viewer && (
+          <div className="flex flex-wrap gap-2">
+            <Link href="/places/new" className="inline-flex min-h-11 items-center rounded-full border border-line px-5 text-sm font-bold hover:bg-surface-2">Add a place</Link>
+            <PostButton />
+          </div>
+        )}
       </header>
 
       <section aria-label="Discover" className="flex flex-col gap-3">

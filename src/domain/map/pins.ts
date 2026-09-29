@@ -7,6 +7,7 @@ export type MapVenue = {
   priceLevel: number | null;
   logoUrl: string | null;
   isDemo: boolean;
+  approved: boolean; // VYBR8 Approved: the owner claimed it
   x: number;
   y: number;
   lat: number;

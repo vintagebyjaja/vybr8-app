@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { ApprovedBadge } from "@/components/places/ApprovedBadge";
+import { placeTitle } from "@/domain/places/places";
 import { SearchBox } from "@/components/search/SearchBox";
 import { formatCents } from "@/domain/menus/menus";
 import { findCity } from "@/domain/map/map";
@@ -98,7 +100,7 @@ export default async function SearchPage({ searchParams }: Props) {
             {results.places.map((p) => (
               <li key={p.id}>
                 <Link href={p.kind === "food_truck" ? `/food-trucks/${p.slug}` : `/venue/${p.slug}`} className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-4 hover:bg-surface-2">
-                  <span className="min-w-0"><b>{p.name}</b><span className="block text-xs text-muted">{KIND[p.kind] ?? p.kind}</span></span>
+                  <span className="min-w-0"><span className="flex flex-wrap items-center gap-1.5"><b>{placeTitle(p.name, p.branch_name)}</b>{p.is_claimed && <ApprovedBadge small />}</span><span className="block text-xs text-muted">{KIND[p.kind] ?? p.kind}</span></span>
                   {p.overall != null && <b className="font-display text-lg vybe-text">{p.overall.toFixed(1)}</b>}
                 </Link>
               </li>
@@ -107,8 +109,12 @@ export default async function SearchPage({ searchParams }: Props) {
         </section>
       )}
 
+      {(q || parsed.tab !== "all") && !empty && (
+        <p className="text-sm text-muted">Can&rsquo;t find a spot? <Link href="/places/new" className="font-semibold text-sky">Add a place</Link></p>
+      )}
+
       {(q || parsed.tab !== "all") && empty && (
-        <p className="rounded-2xl border border-dashed border-line p-6 text-sm text-muted">Nothing on VYBR8 for that yet in {city.name}. Try fewer words, or <Link href="/post/new" className="text-sky">post the first plate</Link>.</p>
+        <p className="rounded-2xl border border-dashed border-line p-6 text-sm text-muted">Nothing on VYBR8 for that yet in {city.name}. Try fewer words, <Link href="/places/new" className="text-sky">add a place</Link>, or <Link href="/post/new" className="text-sky">post the first plate</Link>.</p>
       )}
     </div>
   );
