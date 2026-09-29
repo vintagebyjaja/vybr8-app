@@ -6,6 +6,9 @@
 [build.environment]
   NODE_VERSION = "22"
   NEXT_TELEMETRY_DISABLED = "1"
+  # Next.js keeps a private build cache that records server-only env values. It is never published,
+  # so Netlify's secret scanner skips it. The published site is still scanned.
+  SECRETS_SCAN_OMIT_PATHS = ".netlify/.next/cache/**,.next/cache/**"
 
 # Environment variables are set in the Netlify UI (Site settings → Environment variables).
 # See .env.example. Never give SUPABASE_SECRET_KEY a NEXT_PUBLIC_ prefix; it must stay server-only.

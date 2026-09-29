@@ -14,6 +14,9 @@ import { RatePlace } from "@/components/ratings/RatePlace";
 import { ApprovedBadge } from "@/components/places/ApprovedBadge";
 import { placeTitle } from "@/domain/places/places";
 import { setBrand } from "@/app/(app)/places/actions";
+import { RankBadge } from "@/components/charts/RankBadge";
+import { findCity } from "@/domain/map/map";
+import { ranksForBusiness } from "@/server/charts";
 
 type Params = { params: Promise<{ slug: string }>; searchParams: Promise<{ added?: string }> };
 
@@ -26,7 +29,7 @@ async function loadVenue(slug: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("businesses")
-    .select("id, slug, name, branch_name, kind, description, price_level, website, is_demo, is_claimed, status, brand_id, brand:brands ( name ), locations:business_locations ( label, address_line1, city, region, postal_code, is_primary )")
+    .select("id, slug, name, branch_name, kind, description, price_level, website, is_demo, is_claimed, status, brand_id, brand:brands ( name ), locations:business_locations ( label, address_line1, city, city_slug, region, postal_code, is_primary )")
     .eq("slug", slug)
     .is("deleted_at", null)
     .maybeSingle();
@@ -44,7 +47,8 @@ export default async function VenuePage({ params, searchParams }: Params) {
   const venue = await loadVenue(slug);
   if (!venue) notFound();
   const viewerP = getViewer();
-  const [viewer, page, perks, menu, stats, chefRows, siblings] = await Promise.all([
+  const citySlug = ((venue.locations ?? []) as { city_slug: string | null; is_primary: boolean }[]).sort((a, b) => Number(b.is_primary) - Number(a.is_primary))[0]?.city_slug ?? null;
+  const [viewer, page, perks, menu, stats, chefRows, siblings, ranks] = await Promise.all([
     viewerP,
     getFeed({ kind: "business", businessId: venue.id as string }),
     getBirthdayPerks({ businessId: venue.id as string }),
@@ -75,6 +79,7 @@ export default async function VenuePage({ params, searchParams }: Params) {
         .limit(12);
       return (data ?? []) as unknown as { slug: string; name: string; branch_name: string | null; is_claimed: boolean; locations: { address_line1: string | null; city: string; region: string }[] }[];
     })(),
+    citySlug ? ranksForBusiness(venue.id as string, citySlug, findCity(citySlug).name) : Promise.resolve({ place: null, items: {} }),
   ]);
   if (venue.kind === "food_truck") redirect(`/food-trucks/${venue.slug}`);
   const locations = (venue.locations ?? []) as { label: string | null; address_line1: string | null; city: string; region: string; postal_code: string | null; is_primary: boolean }[];
@@ -97,6 +102,7 @@ export default async function VenuePage({ params, searchParams }: Params) {
           <h1 className="text-4xl font-extrabold">{placeTitle(venue.name as string, venue.branch_name as string | null)}</h1>
           {venue.is_claimed && <ApprovedBadge />}
         </div>
+        {ranks.place && <div><RankBadge badge={ranks.place} /></div>}
         {primary?.address_line1 && (
           <p className="text-sm text-muted">{primary.address_line1}, {primary.city}, {primary.region}{primary.postal_code ? ` ${primary.postal_code}` : ""}</p>
         )}
@@ -175,7 +181,7 @@ export default async function VenuePage({ params, searchParams }: Params) {
 
       <section aria-labelledby="menu-h" className="flex flex-col gap-3">
         <h2 id="menu-h" className="text-xl font-bold">Menu &amp; VYBR8 scores</h2>
-        <MenuList items={menu} signedIn={!!viewer} returnTo={`/venue/${venue.slug}`} />
+        <MenuList items={menu} signedIn={!!viewer} returnTo={`/venue/${venue.slug}`} ranks={ranks.items} />
       </section>
 
       {perks.length > 0 && (

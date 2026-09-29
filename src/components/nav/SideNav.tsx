@@ -49,6 +49,7 @@ export function SideNav() {
         <Link href="/charts" className="text-muted hover:text-text">Charts</Link>
         <Link href="/chefs" className="text-muted hover:text-text">Chefs</Link>
         <Link href="/food-trucks" className="text-muted hover:text-text">Food Trucks</Link>
+        <Link href="/places/new" className="text-muted hover:text-text">Add a place</Link>
         <Link href="/birthday" className="text-muted hover:text-text">Birthday Perks</Link>
         <Link href="/pricing" className="text-muted hover:text-text">VYBR8 MAX</Link>
       </div>

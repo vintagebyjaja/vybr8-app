@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { RateItem } from "@/components/ratings/RateItem";
 import type { MenuItemView } from "@/domain/menus/menus";
+import { RankBadge } from "@/components/charts/RankBadge";
+import type { RankBadge as Badge } from "@/domain/charts/charts";
 
 /** A menu with VYBR8 scores per item, sold-out state, chef credits and a Deep Dive link. */
-export function MenuList({ items, signedIn, returnTo }: { items: MenuItemView[]; signedIn: boolean; returnTo: string }) {
+export function MenuList({ items, signedIn, returnTo, ranks = {} }: { items: MenuItemView[]; signedIn: boolean; returnTo: string; ranks?: Record<string, Badge> }) {
   if (!items.length) return <p className="rounded-2xl border border-dashed border-line p-5 text-sm text-muted">No menu on VYBR8 yet.</p>;
   const sections = [...new Set(items.map((i) => i.section ?? (i.category === "drink" ? "Drinks" : "Menu")))];
   return (
@@ -21,6 +23,7 @@ export function MenuList({ items, signedIn, returnTo }: { items: MenuItemView[];
                       {i.isAlcoholic && <span className="ml-2 rounded-full border border-line px-1.5 text-[10px] font-bold text-muted">21+</span>}
                       {i.soldOut && <span className="ml-2 rounded-full bg-surface-2 px-2 text-[11px] font-bold text-coral">Sold out</span>}
                     </p>
+                    {ranks[i.id] && <p className="mt-0.5"><RankBadge badge={ranks[i.id]!} small /></p>}
                     {i.description && <p className="text-sm text-muted">{i.description}</p>}
                     {i.chefs.length > 0 && (
                       <p className="text-xs text-faint">

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AlertsLink } from "@/components/nav/AlertsLink";
 import { BottomNav } from "@/components/nav/BottomNav";
+import { MobileMoreNav } from "@/components/nav/MobileMoreNav";
 import { SideNav } from "@/components/nav/SideNav";
 import { DemoBadge } from "@/components/ui/DemoBadge";
 import { isDemoMode } from "@/config/public-env";
@@ -32,6 +33,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </Link>
           {viewer && <AlertsLink unread={unread} />}
         </div>
+        <MobileMoreNav />
         <main id="main" className="mx-auto w-full max-w-5xl flex-1 px-4 pb-32 pt-4 md:px-8 md:pb-12">
           {children}
         </main>

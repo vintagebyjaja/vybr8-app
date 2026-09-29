@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MenuList } from "@/components/menu/MenuList";
+import { RankBadge } from "@/components/charts/RankBadge";
+import { ranksForBusiness } from "@/server/charts";
 import { RatePlace } from "@/components/ratings/RatePlace";
 import { DemoBadge } from "@/components/ui/DemoBadge";
 import { findCity } from "@/domain/map/map";
@@ -50,7 +52,11 @@ export default async function TruckPage({ params }: Props) {
   const viewer = await getViewer();
   const truck = await getTruck(slug, viewer?.id ?? null);
   if (!truck) notFound();
-  const [menu, stats] = await Promise.all([getMenu(truck.id, viewer?.id ?? null), getPlaceStats(truck.id)]);
+  const [menu, stats, ranks] = await Promise.all([
+    getMenu(truck.id, viewer?.id ?? null),
+    getPlaceStats(truck.id),
+    truck.homeCitySlug ? ranksForBusiness(truck.id, truck.homeCitySlug, findCity(truck.homeCitySlug).name, true) : Promise.resolve({ place: null, items: {} }),
+  ]);
   const now = new Date();
   const returnTo = `/food-trucks/${truck.slug}`;
   const groups = groupStopsByDay(truck.stops.filter((s) => s.state !== "ended" || now.getTime() - new Date(s.endAt).getTime() < 12 * 3_600_000), truck.timezone, now);
@@ -87,6 +93,7 @@ export default async function TruckPage({ params }: Props) {
             {truck.isDemo && <DemoBadge label="Demo truck" />}
           </div>
           <h1 className="text-4xl font-extrabold">{truck.name}</h1>
+          {ranks.place && <div className="py-1"><RankBadge badge={ranks.place} /></div>}
           {truck.cuisine && <p className="text-lg text-muted">{truck.cuisine}</p>}
           {truck.description && <p className="max-w-prose text-muted">{truck.description}</p>}
           <p className="text-xs text-faint">{truck.followers} {truck.followers === 1 ? "follower" : "followers"}</p>
@@ -198,7 +205,7 @@ export default async function TruckPage({ params }: Props) {
 
       <section id="menu" aria-labelledby="menu-h" className="flex scroll-mt-20 flex-col gap-3">
         <h2 id="menu-h" className="text-xl font-bold">Menu</h2>
-        <MenuList items={menu} signedIn={!!viewer} returnTo={returnTo} />
+        <MenuList items={menu} signedIn={!!viewer} returnTo={returnTo} ranks={ranks.items} />
       </section>
 
       <section aria-labelledby="catering-h" className="flex flex-col gap-1 rounded-2xl border border-line bg-surface p-4">
