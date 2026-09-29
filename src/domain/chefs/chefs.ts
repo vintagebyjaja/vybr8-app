@@ -17,8 +17,7 @@ export const SERVICE_LABELS = {
 export type ChefService = keyof typeof SERVICE_LABELS;
 export const CHEF_SERVICES = Object.keys(SERVICE_LABELS) as ChefService[];
 /** Services people can review. Restaurant visits are rated on the place and its dishes. */
-export const REVIEWABLE_SERVICES = CHEF_SERVICES.filter((s) => s !== "restaurant_chef");
-
+   export const REVIEWABLE_SERVICES: ChefService[] = CHEF_SERVICES.filter((s) => s !== "restaurant_chef");
 export const RELATIONSHIP_LABEL = {
   self_reported: "Self-reported",
   business_confirmed: "Confirmed by the business",
