@@ -2,17 +2,18 @@
 
 import { useActionState, useState } from "react";
 import { createLinkup, type FormState } from "@/app/(app)/vybe/actions";
+import { PlacePicker } from "@/components/places/PlacePicker";
+import type { PickedPlace } from "@/domain/places/places";
 import { DRINKS_BY_DEFAULT, MAX_SPOTS, MIN_SPOTS, OCCASIONS, type Occasion } from "@/domain/linkups/linkups";
 
 const input = "min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-text placeholder:text-faint focus:border-sky";
 
 export function LinkupForm({
-  cities, defaultCity, venues, defaultVenue, canDrink, isAdult = true, turns21On = null, today,
+  cities, defaultCity, defaultVenue = null, canDrink, isAdult = true, turns21On = null, today,
 }: {
   cities: { slug: string; name: string }[];
   defaultCity: string;
-  venues: { city: string; slug: string; name: string }[];
-  defaultVenue: string;
+  defaultVenue?: PickedPlace | null;
   canDrink: boolean;
   /** Under-18 hosts can only make friends-only or invite-only Link Ups. */
   isAdult?: boolean;
@@ -24,12 +25,11 @@ export function LinkupForm({
   const [city, setCity] = useState(defaultCity);
   const [occasion, setOccasion] = useState<Occasion>("girls_night");
   const [spots, setSpots] = useState(6);
-  const [venue, setVenue] = useState(defaultVenue);
+  const [venue, setVenue] = useState(defaultVenue?.slug ?? "");
   const [drinks, setDrinks] = useState(false);
   const [date, setDate] = useState(today);
   const drinksOk = canDrink || (!!turns21On && date >= turns21On);
   const bdayLabel = turns21On ? new Date(`${turns21On}T12:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric" }) : "";
-  const cityVenues = venues.filter((v) => v.city === city);
   const occasions = Object.keys(OCCASIONS) as Occasion[];
 
   return (
@@ -62,17 +62,12 @@ export function LinkupForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           <label htmlFor="city" className="text-sm font-semibold">City</label>
-          <select id="city" name="city" value={city} onChange={(e) => { setCity(e.target.value); setVenue(""); }} className={input}>
+          <select id="city" name="city" value={city} onChange={(e) => setCity(e.target.value)} className={input}>
             {cities.map((c) => <option key={c.slug} value={c.slug}>{c.name}</option>)}
           </select>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="venue" className="text-sm font-semibold">Place on VYBR8</label>
-          <select id="venue" name="venue" value={venue} onChange={(e) => setVenue(e.target.value)} className={input}>
-            <option value="">Somewhere else…</option>
-            {cityVenues.map((v) => <option key={v.slug} value={v.slug}>{v.name}</option>)}
-          </select>
-        </div>
+        <PlacePicker name="venue" valueKey="slug" city={city} initial={defaultVenue} label="Place on VYBR8 (optional)"
+          placeholder="Search places, or leave blank" onChange={(p) => setVenue(p?.slug ?? "")} />
       </div>
       {!venue && (
         <div className="flex flex-col gap-1.5">

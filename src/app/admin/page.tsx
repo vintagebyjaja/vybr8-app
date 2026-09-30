@@ -55,9 +55,12 @@ export default async function AdminPage() {
       <Link href="/" className="text-sm text-muted hover:text-text">← Back to VYBR8</Link>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-3xl font-bold">Admin</h1>
-        <Link href="/admin/support" className="inline-flex min-h-11 items-center rounded-full border border-sky/60 px-5 text-sm font-bold text-sky hover:bg-sky/10">
-          Support inbox{openTickets ? ` (${openTickets} open)` : ""}
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/admin/import" className="inline-flex min-h-11 items-center rounded-full border border-mint/60 px-5 text-sm font-bold text-mint hover:bg-mint/10">Import real places</Link>
+          <Link href="/admin/support" className="inline-flex min-h-11 items-center rounded-full border border-sky/60 px-5 text-sm font-bold text-sky hover:bg-sky/10">
+            Support inbox{openTickets ? ` (${openTickets} open)` : ""}
+          </Link>
+        </div>
       </div>
 
       <section aria-labelledby="places" className="flex flex-col gap-3">

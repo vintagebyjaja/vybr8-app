@@ -1,11 +1,11 @@
 import Link from "next/link";
+import { PlacePicker } from "@/components/places/PlacePicker";
 import { notFound } from "next/navigation";
 import { Avatar } from "@/components/ui/Avatar";
 import { GROUP_KINDS, RELATIONSHIPS_FOR, RELATIONSHIP_LABEL, type Relationship } from "@/domain/groups/groups";
 import { formatWhen } from "@/domain/linkups/linkups";
 import { findCity } from "@/domain/map/map";
 import { formatCents } from "@/domain/menus/menus";
-import { createClient } from "@/lib/supabase/server";
 import { requireViewer } from "@/server/auth";
 import { getGroup, getGroupSuggestions, getMyKids } from "@/server/groups";
 import { getMenu } from "@/server/menus";
@@ -44,15 +44,11 @@ export default async function GroupPage({ params, searchParams }: { params: Prom
   const manage = g.myRole === "owner" || g.myRole === "admin";
   const active = g.members.filter((m) => m.status === "active");
   const invited = g.members.filter((m) => m.status === "invited");
-  const supabase = await createClient();
-  const [suggestions, kids, venuesRes, menus] = await Promise.all([
+  const [suggestions, kids, menus] = await Promise.all([
     getGroupSuggestions(g, viewer),
     getMyKids(viewer),
-    supabase.from("business_locations").select("business:businesses ( slug, name )").eq("city_slug", g.citySlug).limit(300),
     Promise.all(g.plans.filter((p) => p.business).map(async (p) => [p.id, await getMenu(p.business!.id, viewer.id)] as const)),
   ]);
-  const venues = ((venuesRes.data ?? []) as unknown as { business: { slug: string; name: string } | null }[]).filter((v) => v.business).map((v) => v.business!)
-    .sort((a, b) => a.name.localeCompare(b.name));
   const menuBy = new Map(menus);
   const kidsNotIn = kids.filter((k) => !k.claimed && !g.members.some((m) => m.dependentId === k.id));
   const rels = RELATIONSHIPS_FOR[g.kind];
@@ -227,10 +223,7 @@ export default async function GroupPage({ params, searchParams }: { params: Prom
             <input name="title" required maxLength={80} placeholder={g.kind === "dating" ? "Anniversary dinner" : "Sunday family dinner"} aria-label="Plan name" className={`${input} sm:col-span-2`} />
             <input name="date" type="date" min={today} aria-label="Date" className={input} />
             <input name="time" type="time" defaultValue="19:00" aria-label="Time" className={input} />
-            <select name="venue" aria-label="Place" className={`${input} sm:col-span-2`}>
-              <option value="">Pick a place later</option>
-              {venues.map((v) => <option key={v.slug} value={v.slug}>{v.name}</option>)}
-            </select>
+            <PlacePicker name="venue" valueKey="slug" city={g.citySlug} placeholder="Search for a place, or pick one later" className="sm:col-span-2" />
             <input name="notes" maxLength={500} placeholder="Notes (reservation, dress code…)" aria-label="Notes" className={`${input} sm:col-span-2`} />
             <button className={`${btn} vybe-gradient self-start text-ink`}>Save plan</button>
           </form>

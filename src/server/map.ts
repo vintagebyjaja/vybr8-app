@@ -13,12 +13,18 @@ export async function getMapData(citySlug: string, viewer: Viewer | null): Promi
   const supabase = await createClient();
   const now = new Date();
 
-  const { data: locs } = await supabase
+  // Cities can hold thousands of places: the map shows the ones people care about first (claimed, most posted about).
+  const { data: pick } = await supabase.rpc("map_location_ids", { p_city: city.slug, p_limit: 250 });
+  const pickIds = ((pick ?? []) as unknown as (string | { map_location_ids: string })[]).map((r) => (typeof r === "string" ? r : r.map_location_ids));
+  // Fetched in small batches so each request URL stays short.
+  const batches: string[][] = [];
+  for (let i = 0; i < pickIds.length; i += 80) batches.push(pickIds.slice(i, i + 80));
+  const results = await Promise.all(batches.map((ids) => supabase
     .from("business_locations")
     .select("id, latitude, longitude, timezone, business:businesses ( id, slug, name, branch_name, kind, price_level, logo_url, is_demo, is_claimed ), hours:business_hours ( weekday, opens_at, closes_at )")
-    .eq("city_slug", city.slug)
-    .not("latitude", "is", null)
-    .limit(300);
+    .in("id", ids)));
+  const rank = new Map(pickIds.map((id, i) => [id, i]));
+  const locs = results.flatMap((r) => r.data ?? []).sort((a, b) => (rank.get((a as { id: string }).id) ?? 0) - (rank.get((b as { id: string }).id) ?? 0));
 
   type Loc = {
     id: string; latitude: string | number; longitude: string | number; timezone: string;
@@ -29,7 +35,8 @@ export async function getMapData(citySlug: string, viewer: Viewer | null): Promi
   const businessIds = [...new Set(locations.map((l) => l.business!.id))];
 
   const [feed, linkupRows, statusRows, mine, truckRows] = await Promise.all([
-    getFeed({ kind: "businesses", businessIds }),
+    // Photos: the top-ranked places are the ones with posts, so the first 60 is plenty (and keeps the request short).
+    getFeed({ kind: "businesses", businessIds: businessIds.slice(0, 60) }),
     supabase
       .from("linkups")
       .select("id, title, occasion, starts_at, ends_at, capacity, is_alcoholic, open_to_new_friends, meet_point, business:businesses ( id, name )")

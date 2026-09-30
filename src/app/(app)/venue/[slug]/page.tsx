@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { OSM_ATTRIBUTION, OSM_COPYRIGHT_URL } from "@/domain/places/osm";
 import { notFound, redirect } from "next/navigation";
 import { PerkCard } from "@/components/birthday/PerkCard";
 import { PostButton } from "@/components/posts/PostButton";
@@ -29,7 +30,7 @@ async function loadVenue(slug: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("businesses")
-    .select("id, slug, name, branch_name, kind, description, price_level, website, is_demo, is_claimed, status, brand_id, brand:brands ( name ), locations:business_locations ( label, address_line1, city, city_slug, region, postal_code, is_primary )")
+    .select("id, slug, name, branch_name, kind, description, price_level, website, phone, source, is_demo, is_claimed, status, brand_id, brand:brands ( name ), locations:business_locations ( label, address_line1, city, city_slug, region, postal_code, is_primary )")
     .eq("slug", slug)
     .is("deleted_at", null)
     .maybeSingle();
@@ -124,6 +125,11 @@ export default async function VenuePage({ params, searchParams }: Params) {
               Website
             </a>
           )}
+          {venue.phone && (
+            <a href={`tel:${String(venue.phone).replace(/[^\d+]/g, "")}`} className="inline-flex min-h-11 items-center rounded-full border border-line px-5 text-sm font-bold hover:bg-surface-2">
+              Call
+            </a>
+          )}
         </div>
       </header>
 
@@ -206,6 +212,14 @@ export default async function VenuePage({ params, searchParams }: Params) {
           empty={<>No one has posted from here yet. <Link href={`/post/new?venue=${venue.slug}`} className="font-semibold text-sky">Be the first</Link></>}
         />
       </section>
+
+      {venue.source === "osm" && !venue.is_claimed && (
+        <p className="text-xs text-faint">
+          Place info from <a href={OSM_COPYRIGHT_URL} className="underline hover:text-muted">{OSM_ATTRIBUTION}</a>. Something off?{" "}
+          <Link href={`/venue/${venue.slug}/claim`} className="underline hover:text-muted">Own it? Claim it</Link> or{" "}
+          <Link href={`/help?topic=other&from=/venue/${venue.slug}#contact`} className="underline hover:text-muted">tell us</Link>.
+        </p>
+      )}
     </article>
   );
 }

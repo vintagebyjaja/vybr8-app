@@ -6,8 +6,8 @@ import { createClient } from "@/lib/supabase/browser";
 import { POST_KINDS, POST_LIMITS, fitWithin, parsePriceToCents, validatePostDraft, type PostKind, type PostPhoto } from "@/domain/posts/posts";
 import { createPost } from "@/app/(app)/post/actions";
 import { Button } from "@/components/ui/Button";
+import { PlacePicker, type PickedPlace } from "@/components/places/PlacePicker";
 
-type Venue = { id: string; name: string };
 type Picked = { file: File; preview: string; alt: string };
 
 /** Resize to at most 1600px on the long edge and re-encode as JPEG (also strips location metadata). */
@@ -25,12 +25,12 @@ async function prepareImage(file: File): Promise<{ blob: Blob; width: number; he
   return { blob, width, height };
 }
 
-export function PostComposer({ userId, venues, defaultVenueId, defaultKind = "plate", canPostAlcohol, under21 = false }: { userId: string; venues: Venue[]; defaultVenueId?: string; defaultKind?: PostKind; canPostAlcohol: boolean; under21?: boolean }) {
+export function PostComposer({ userId, defaultVenue = null, defaultKind = "plate", canPostAlcohol, under21 = false }: { userId: string; defaultVenue?: PickedPlace | null; defaultKind?: PostKind; canPostAlcohol: boolean; under21?: boolean }) {
   const router = useRouter();
   const ids = useId();
   const [kind, setKind] = useState<PostKind>(defaultKind);
   const [photos, setPhotos] = useState<Picked[]>([]);
-  const [venueId, setVenueId] = useState(defaultVenueId ?? "");
+  const [venueId, setVenueId] = useState(defaultVenue?.id ?? "");
   const [itemName, setItemName] = useState("");
   const [caption, setCaption] = useState("");
   const [rate, setRate] = useState(false);
@@ -145,11 +145,8 @@ export function PostComposer({ userId, venues, defaultVenueId, defaultKind = "pl
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor={`${ids}-venue`} className="text-sm font-semibold">Where {kind === "spot" ? "" : <span className="font-normal text-faint">(optional)</span>}</label>
-        <select id={`${ids}-venue`} value={venueId} onChange={(e) => setVenueId(e.target.value)} className="min-h-11 rounded-xl border border-line bg-surface px-3">
-          <option value="">{kind === "spot" ? "Choose the place" : "Not at a listed place"}</option>
-          {venues.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-        </select>
+        <p className="text-sm font-semibold">Where {kind === "spot" ? "" : <span className="font-normal text-faint">(optional)</span>}</p>
+        <PlacePicker initial={defaultVenue} onChange={(p) => setVenueId(p?.id ?? "")} placeholder={kind === "spot" ? "Search for the place" : "Search places, or leave blank"} />
       </div>
 
       {kind === "pour" && (

@@ -131,18 +131,24 @@ export async function getGroupSuggestions(group: GroupDetail, viewer: Viewer): P
   const withTastes = active.filter((m) => m.taste.likes.length);
   if (!withTastes.length) return [];
   const supabase = await createClient();
-  const { data: locs } = await supabase.from("business_locations").select("business_id").eq("city_slug", group.citySlug).limit(500);
-  const bizIds = [...new Set((locs ?? []).map((l) => l.business_id as string))];
-  const { data: trucks } = await supabase.from("food_truck_profiles").select("business_id").eq("home_city_slug", group.citySlug);
-  for (const t of trucks ?? []) bizIds.push(t.business_id as string);
-  if (!bizIds.length) return [];
-  const { data: items } = await supabase
-    .from("menu_items")
-    .select("id, name, description, dish_type, category, is_alcoholic, is_available, business:businesses!inner ( id, slug, name )")
-    .in("business_id", bizIds).eq("is_available", true).limit(1500);
+  // Only places with menus can be suggested: filter by city in the database (cities hold thousands of places).
+  const cols = "id, name, description, dish_type, category, is_alcoholic, is_available, business:businesses!inner ( id, slug, name, locations:business_locations!inner ( city_slug ) )";
+  const { data: trucks } = await supabase.from("food_truck_profiles").select("business_id").eq("home_city_slug", group.citySlug).limit(100);
+  const truckIds = (trucks ?? []).map((t) => t.business_id as string);
+  const [{ data: placeItems }, { data: truckItems }] = await Promise.all([
+    supabase.from("menu_items").select(cols).eq("business.locations.city_slug", group.citySlug).eq("is_available", true).limit(1500),
+    truckIds.length
+      ? supabase.from("menu_items").select("id, name, description, dish_type, category, is_alcoholic, is_available, business:businesses!inner ( id, slug, name )").in("business_id", truckIds).eq("is_available", true).limit(500)
+      : Promise.resolve({ data: [] }),
+  ]);
+  const seenItems = new Set<string>();
+  const items = [...(placeItems ?? []), ...(truckItems ?? [])].filter((i) => { const id = (i as { id: string }).id; if (seenItems.has(id)) return false; seenItems.add(id); return true; });
   type IRow = { id: string; name: string; description: string | null; dish_type: string | null; category: "food" | "drink"; is_alcoholic: boolean; business: { id: string; slug: string; name: string } };
   const irows = (items ?? []) as unknown as IRow[];
-  const { data: stats } = irows.length ? await supabase.from("menu_item_stats").select("menu_item_id, avg_score").in("menu_item_id", irows.map((i) => i.id)) : { data: [] };
+  const idChunks: string[][] = [];
+  for (let i = 0; i < irows.length; i += 150) idChunks.push(irows.slice(i, i + 150).map((x) => x.id));
+  const statParts = await Promise.all(idChunks.map((ids) => supabase.from("menu_item_stats").select("menu_item_id, avg_score").in("menu_item_id", ids)));
+  const stats = statParts.flatMap((r) => r.data ?? []);
   const score = new Map(((stats ?? []) as { menu_item_id: string; avg_score: number | null }[]).map((s) => [s.menu_item_id, s.avg_score == null ? null : Number(s.avg_score)]));
   const candidates: Candidate[] = irows.map((i) => ({
     id: i.id, name: i.name, description: i.description, dishType: i.dish_type, category: i.category, isAlcoholic: i.is_alcoholic,

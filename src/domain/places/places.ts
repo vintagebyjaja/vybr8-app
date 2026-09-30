@@ -72,3 +72,6 @@ export function streetName(address: string): string | null {
   const s = first.replace(/^\s*[0-9][0-9A-Za-z-]*\s+/, "").trim();
   return s || null;
 }
+
+/** A place as the place pickers show it. */
+export type PickedPlace = { id: string; slug: string; name: string; branch: string | null; address: string | null; city: string | null; approved?: boolean };

@@ -32,6 +32,7 @@ export const FAQ: { title: string; items: Faq[] }[] = [
     title: "Places, ratings & Charts",
     items: [
       { q: "A place is missing. Can I add it?", a: "Yes. Add it with its address and our team reviews it, usually within a day. Chains are added location by location, so every branch has its own ratings.", link: { href: "/places/new", label: "Add a place" } },
+      { q: "Where does place info come from?", a: "Places are added by people on VYBR8, by owners who claim them, and from OpenStreetMap (© OpenStreetMap contributors), a free map anyone can improve. Ratings, posts and Charts come only from people on VYBR8." },
       { q: "How do the Charts work?", a: "The VYBR8 25 and every chart rank dishes, drinks, places and chefs by what people rated them, in each city. Businesses can't pay to move up." },
       { q: "What does \"VYBR8 Approved\" mean?", a: "The owner or manager proved the place is theirs and keeps its menu and hours up to date on VYBR8. It isn't a paid ranking boost." },
     ],

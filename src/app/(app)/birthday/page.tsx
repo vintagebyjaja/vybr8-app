@@ -1,9 +1,9 @@
 import Link from "next/link";
+import { PlacePicker } from "@/components/places/PlacePicker";
 import { PerkCard } from "@/components/birthday/PerkCard";
 import { FeedTabs } from "@/components/posts/FeedTabs";
 import { Button } from "@/components/ui/Button";
 import { birthdayStatus, formatMonthDay, parseYmd, perkUsableOn, todayIn } from "@/domain/birthday/birthday";
-import { createClient } from "@/lib/supabase/server";
 import { getViewer } from "@/server/auth";
 import { getBirthdayPerks, getPendingPerks, type PerkType } from "@/server/birthday";
 import { reviewPerk, suggestPerk } from "./actions";
@@ -25,11 +25,9 @@ export default async function BirthdayPage({ searchParams }: Search) {
   const viewer = await getViewer();
   const isStaff = !!viewer?.platformRoles.length;
 
-  const supabase = await createClient();
-  const [perks, pending, venues] = await Promise.all([
+  const [perks, pending] = await Promise.all([
     getBirthdayPerks(type === "all" ? {} : { type: type as PerkType }),
     isStaff ? getPendingPerks() : Promise.resolve([]),
-    viewer ? supabase.from("businesses").select("id, name").order("name").limit(500) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
   ]);
 
   const today = todayIn();
@@ -105,12 +103,7 @@ export default async function BirthdayPage({ searchParams }: Search) {
           {suggest === "sent" && <p className="text-sm text-mint">Thanks! We&rsquo;ll review it soon.</p>}
           {(suggest === "invalid" || suggest === "error") && <p className="text-sm text-danger">We couldn&rsquo;t save that. Pick the place and describe the perk.</p>}
           <form action={suggestPerk} className="grid gap-3 sm:grid-cols-2">
-            <label className="flex flex-col gap-1.5 text-sm font-semibold sm:col-span-2">Place
-              <select name="businessId" required className="min-h-11 rounded-xl border border-line bg-surface-2 px-3 font-normal">
-                <option value="">Choose the place</option>
-                {(venues.data ?? []).map((v) => <option key={v.id as string} value={v.id as string}>{v.name as string}</option>)}
-              </select>
-            </label>
+            <PlacePicker name="businessId" valueKey="id" label="Place" required placeholder="Search for the place" className="sm:col-span-2" />
             <label className="flex flex-col gap-1.5 text-sm font-semibold sm:col-span-2">The perk
               <input name="title" required maxLength={120} placeholder="Free dessert on your birthday" className="min-h-11 rounded-xl border border-line bg-surface-2 px-3 font-normal" />
             </label>

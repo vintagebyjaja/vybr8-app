@@ -3,6 +3,7 @@ import { LinkupForm } from "@/components/linkups/LinkupForm";
 import { CITIES, findCity } from "@/domain/map/map";
 import { createClient } from "@/lib/supabase/server";
 import { requireViewer } from "@/server/auth";
+import { getPickedPlace } from "@/server/places";
 import { getViewerCity } from "@/server/map";
 
 export const metadata = { title: "Start a Link Up" };
@@ -14,16 +15,8 @@ export default async function NewLinkupPage({ searchParams }: Props) {
   const { venue, city: cityParam } = await searchParams;
   const city = findCity(await getViewerCity(viewer, cityParam));
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("business_locations")
-    .select("city_slug, business:businesses ( slug, name )")
-    .not("city_slug", "is", null)
-    .limit(1000);
-  const venues = ((data ?? []) as unknown as { city_slug: string; business: { slug: string; name: string } | null }[])
-    .filter((r) => r.business)
-    .map((r) => ({ city: r.city_slug, slug: r.business!.slug, name: r.business!.name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const venueCity = venues.find((v) => v.slug === venue)?.city;
+  const defaultVenue = await getPickedPlace({ slug: venue });
+  const venueCity = defaultVenue?.city ?? undefined;
   const { data: me } = await supabase.from("profiles").select("avatar_url").eq("id", viewer.id).single();
   if (!me?.avatar_url) {
     return (
@@ -46,8 +39,7 @@ export default async function NewLinkupPage({ searchParams }: Props) {
       <LinkupForm
         cities={CITIES.map((c) => ({ slug: c.slug, name: c.name }))}
         defaultCity={venueCity ?? city.slug}
-        venues={venues}
-        defaultVenue={venue ?? ""}
+        defaultVenue={defaultVenue}
         canDrink={viewer.is21Plus}
         isAdult={viewer.isAdult}
         turns21On={!viewer.is21Plus && viewer.birthdate ? turns21(viewer.birthdate) : null}
