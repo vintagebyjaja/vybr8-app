@@ -64,10 +64,12 @@ export default async function ProfilePage({ params }: Params) {
   const teamTitle = (team.data?.title as string | undefined) ?? null;
   const name = (profile.display_name as string | null) ?? (profile.username as string);
   const showTeamTools = isMe && isStaff;
+  // The founder's own profile is for business and admin: posting stays, consumer extras go.
+  const founderView = isMe && !!team.data?.is_founder;
   const pending = showTeamTools ? await getPendingApplications(3) : null;
   const joinRequests = showTeamTools && team.data?.is_founder ? ((await supabase.rpc("team_join_requests")).data ?? []).length : 0;
   const connections = `/profile/${profile.username as string}/connections`;
-  const [taste, myLists] = isMe && viewer
+  const [taste, myLists] = isMe && viewer && !founderView
     ? await Promise.all([
         getMyTaste(viewer),
         supabase.from("place_lists").select("list, business:businesses ( slug, name, branch_name )").order("created_at", { ascending: false }).limit(60),
@@ -118,7 +120,7 @@ export default async function ProfilePage({ params }: Params) {
         {isMe ? (
           <>
             <PostButton />
-            <Link href="/groups" className="vybe-ring inline-flex min-h-11 items-center rounded-full px-5 text-sm font-bold">Groups &amp; Family</Link>
+            {!founderView && <Link href="/groups" className="vybe-ring inline-flex min-h-11 items-center rounded-full px-5 text-sm font-bold">Groups &amp; Family</Link>}
             <Link href="/profile/settings" className="inline-flex min-h-11 items-center rounded-full border border-line px-5 text-sm font-bold hover:bg-surface-2">Edit profile &amp; privacy</Link>
             <form action="/auth/sign-out" method="post"><button className="inline-flex min-h-11 items-center rounded-full px-5 text-sm font-semibold text-muted hover:text-text">Sign out</button></form>
           </>
@@ -169,7 +171,7 @@ export default async function ProfilePage({ params }: Params) {
         </section>
       )}
 
-      {isMe && (
+      {isMe && !founderView && (
         <section aria-labelledby="lists-h" className="grid gap-4 sm:grid-cols-2">
           <h2 id="lists-h" className="sr-only">My places</h2>
           <div className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-line bg-surface p-5">
@@ -200,7 +202,7 @@ export default async function ProfilePage({ params }: Params) {
         </section>
       )}
 
-      {isMe && !creatorType && (
+      {isMe && !founderView && !creatorType && (
         <section className="rounded-[var(--radius-card)] vybe-ring flex flex-col gap-2 p-5">
           <h2 className="text-lg font-bold">Big Back or Liquid Lover?</h2>
           {myApplication.data?.status === "pending" ? (

@@ -5,6 +5,8 @@ import { BackButton } from "@/components/nav/BackButton";
 import { BottomNav } from "@/components/nav/BottomNav";
 import { MobileMoreNav } from "@/components/nav/MobileMoreNav";
 import { SideNav } from "@/components/nav/SideNav";
+import { BirthdayPerksLink } from "@/components/nav/BirthdayPerksLink";
+import { createClient } from "@/lib/supabase/server";
 import { DemoBadge } from "@/components/ui/DemoBadge";
 import { isDemoMode } from "@/config/public-env";
 import { getViewer } from "@/server/auth";
@@ -27,6 +29,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     }
   }
   const unread = viewer ? await getUnreadCount(viewer.id) : 0;
+  // The founder's profile is a business/admin page: no consumer extras there.
+  let founderProfile: string | null = null;
+  if (viewer && viewer.platformRoles.includes("admin")) {
+    const supabase = await createClient();
+    const { data } = await supabase.from("team_members").select("is_founder, profile:profiles ( username )").eq("user_id", viewer.id).maybeSingle();
+    const row = data as { is_founder: boolean; profile: { username: string } | { username: string }[] | null } | null;
+    const p = Array.isArray(row?.profile) ? row?.profile[0] : row?.profile;
+    if (row?.is_founder && p?.username) founderProfile = `/profile/${p.username}`;
+  }
 
   return (
     <div className="flex min-h-dvh">
@@ -43,9 +54,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-2 px-4 pt-4 md:px-8">
           <BackButton />
           <div className="flex items-center gap-2">
-          <Link href="/birthday" className="inline-flex min-h-11 items-center rounded-full border border-line bg-surface px-4 text-sm font-semibold hover:bg-surface-2">
-            <span className="vybe-text">Birthday Perks</span>
-          </Link>
+          <BirthdayPerksLink hideOn={founderProfile} />
           {viewer && viewer.platformRoles.length > 0 && (
             <Link href={viewer.platformRoles.includes("admin") ? "/admin" : "/team"} aria-label={viewer.platformRoles.includes("admin") ? "Admin" : "VYBR8 Team tools"}
               className="inline-flex min-h-11 items-center rounded-full border border-mint/50 bg-surface px-3 text-sm font-bold text-mint hover:bg-surface-2 sm:px-4">
