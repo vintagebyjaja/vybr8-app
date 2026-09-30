@@ -8,7 +8,7 @@ const field = "min-h-11 w-full rounded-xl border border-line bg-ink px-3 text-sm
 const WATER_OZ = [8, 12, 16, 24, 32];
 
 /** "Have you already ate?" Food, a drink or water, what time of day, and how much. */
-export function FoodLogForm({ action, date, slot }: { action: (f: FormData) => void | Promise<void>; date: string; slot: FoodSlot | null }) {
+export function FoodLogForm({ action, date, slot, ai = false }: { action: (f: FormData) => void | Promise<void>; date: string; slot: FoodSlot | null; ai?: boolean }) {
   const [kind, setKind] = useState<FoodKind>("food");
   return (
     <form action={action} className="flex flex-col gap-4">
@@ -49,7 +49,7 @@ export function FoodLogForm({ action, date, slot }: { action: (f: FormData) => v
                 <input name="amount" maxLength={40} placeholder="1 plate, 2 slices…" className={field} />
               </label>
             )}
-            <label className="flex flex-col gap-1 text-sm font-semibold">Calories <span className="font-normal text-faint">(if you know)</span>
+            <label className="flex flex-col gap-1 text-sm font-semibold">Calories <span className="font-normal text-faint">{ai ? "(blank = we estimate)" : "(if you know)"}</span>
               <input name="calories" inputMode="numeric" placeholder="650" className={`${field} tabular-nums`} />
             </label>
           </div>

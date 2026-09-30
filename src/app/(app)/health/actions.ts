@@ -7,6 +7,7 @@ import { ACTIVITY_LEVELS, ACTIVITY_OPTIONS, DAY_PARTS, FOOD_KINDS, FOOD_SLOTS, S
 import { createClient } from "@/lib/supabase/server";
 import { requireViewer } from "@/server/auth";
 import { log } from "@/server/log";
+import { estimateNutrition } from "@/server/nutrition-ai";
 
 const back = (path: string, params: Record<string, string>): never => {
   redirect(`${path}${path.includes("?") ? "&" : "?"}${new URLSearchParams(params)}`);
@@ -165,9 +166,16 @@ export async function logFood(form: FormData) {
   if (d.kind === "water" && !d.ounces) back("/health", { date, e: "How many ounces of water?" });
   const supabase = await createClient();
   await ensureGoals(supabase, viewer.id);
+  // No calories typed in? VYBR8 estimates them (always labeled as an estimate).
+  const est = d.kind !== "water" && d.calories == null && (await underEstimateCap(supabase, viewer.id, d.date))
+    ? await estimateNutrition({ kind: d.kind, name: name!, amount: d.amount, ounces: d.ounces })
+    : null;
   const { error } = await supabase.from("food_logs").insert({
     user_id: viewer.id, day: d.date, kind: d.kind, time_slot: d.slot, name, amount: d.kind === "water" ? null : (d.amount ?? null),
-    ounces: d.ounces ?? null, calories: d.kind === "water" ? 0 : (d.calories ?? null), protein_g: d.protein ?? null,
+    ounces: d.ounces ?? null,
+    calories: d.kind === "water" ? 0 : (d.calories ?? est?.calories ?? null),
+    protein_g: d.protein ?? est?.protein ?? null, carbs_g: est?.carbs ?? null, fat_g: est?.fat ?? null,
+    nutrition_source: est ? "estimated" : "unknown",
   });
   if (error) {
     log.warn("health.food_failed", { code: error.code });
@@ -175,6 +183,32 @@ export async function logFood(form: FormData) {
   }
   revalidatePath("/health");
   back("/health", { date: d.date, saved: d.kind });
+}
+
+/** Up to 40 AI estimates per person per day keeps costs predictable. */
+async function underEstimateCap(supabase: Awaited<ReturnType<typeof createClient>>, userId: string, day: string): Promise<boolean> {
+  const { count } = await supabase.from("food_logs").select("id", { count: "exact", head: true })
+    .eq("user_id", userId).eq("day", day).eq("nutrition_source", "estimated");
+  return (count ?? 0) < 40;
+}
+
+/** Estimate calories for something already logged without them. */
+export async function estimateFood(form: FormData) {
+  const viewer = await requireViewer("/health");
+  const id = z.uuid().safeParse(form.get("id"));
+  const date = String(form.get("date") ?? "");
+  if (!id.success) return;
+  const supabase = await createClient();
+  const { data: row } = await supabase.from("food_logs").select("kind, name, amount, ounces, calories, menu_item_id").eq("id", id.data).maybeSingle();
+  const r = row as { kind: string; name: string; amount: string | null; ounces: number | string | null; calories: number | null; menu_item_id: string | null } | null;
+  if (!r || r.kind === "water" || r.calories != null || r.menu_item_id) back("/health", isYmd(date) ? { date } : {});
+  const est = (await underEstimateCap(supabase, viewer.id, date))
+    ? await estimateNutrition({ kind: r!.kind === "drink" ? "drink" : "food", name: r!.name, amount: r!.amount, ounces: r!.ounces == null ? null : Number(r!.ounces) })
+    : null;
+  if (!est) back("/health", { ...(isYmd(date) ? { date } : {}), e: "Couldn't estimate that one. Add the calories yourself if you know them." });
+  await supabase.from("food_logs").update({ calories: est!.calories, protein_g: est!.protein, carbs_g: est!.carbs, fat_g: est!.fat, nutrition_source: "estimated" }).eq("id", id.data);
+  revalidatePath("/health");
+  back("/health", isYmd(date) ? { date, saved: "estimate" } : { saved: "estimate" });
 }
 
 export async function removeFood(form: FormData) {

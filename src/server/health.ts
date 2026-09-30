@@ -49,7 +49,7 @@ export async function remindCheckIn(userId: string, tz: string): Promise<void> {
 
 export type JournalEntry = {
   id: string; kind: FoodKind; name: string; amount: string | null; ounces: number | null; slot: FoodSlot | null;
-  calories: number | null; protein: number | null; fromMenu: boolean;
+  calories: number | null; protein: number | null; fromMenu: boolean; estimated: boolean;
 };
 
 export type ActiveVybe = {
@@ -62,14 +62,14 @@ export type ActiveVybe = {
   history: { day: string; sleepMin: number | null; level: ActivityLevel | null }[]; // oldest → newest, ending at `date`
   journal: JournalEntry[];   // in time-of-day order
   waterOz: number;
-  nutrition: { calories: number; protein: number; carbs: number; fat: number; meals: number; target: { calories: number; protein: number | null; carbs: number | null; fat: number | null } | null };
+  nutrition: { calories: number; protein: number; carbs: number; fat: number; meals: number; missing: number; estimated: boolean; target: { calories: number; protein: number | null; carbs: number | null; fat: number | null } | null };
 };
 
 /** Everything the Active Vybe screen shows for one day. Owner-only rows (RLS). */
 export async function getActiveVybe(userId: string, date: string, tz: string, historyDays = 30): Promise<ActiveVybe> {
   const [supabase, rhythm] = await Promise.all([createClient(), getRhythm(userId)]);
   const from = addDays(date, -(historyDays - 1));
-  const logCols = "id, kind, name, amount, ounces, time_slot, day, menu_item_id, calories, protein_g, carbs_g, fat_g, logged_at";
+  const logCols = "id, kind, name, amount, ounces, time_slot, day, menu_item_id, calories, protein_g, carbs_g, fat_g, nutrition_source, logged_at";
   const [{ data: sleeps }, { data: checks }, { data: undated }, { data: targets }, { data: dated }] = await Promise.all([
     supabase.from("sleep_logs").select("day, bed_time, wake_time, minutes, quality").eq("user_id", userId).gte("day", from).lte("day", date),
     supabase.from("activity_checkins").select("day, part, level, activities, steps_band, miles, note, updated_at").eq("user_id", userId).gte("day", from).lte("day", date),
@@ -107,7 +107,7 @@ export async function getActiveVybe(userId: string, date: string, tz: string, hi
 
   type Log = {
     id: string; kind: FoodKind; name: string; amount: string | null; ounces: number | string | null; time_slot: FoodSlot | null; day: string | null; menu_item_id: string | null;
-    calories: number | null; protein_g: number | string | null; carbs_g: number | string | null; fat_g: number | string | null; logged_at: string;
+    calories: number | null; protein_g: number | string | null; carbs_g: number | string | null; fat_g: number | string | null; nutrition_source: string | null; logged_at: string;
   };
   // Journal rows carry their day; older rows (dish pages, Vybe Plan) count toward the person's day by when they were logged.
   const logsToday = [...((dated ?? []) as Log[]), ...((undated ?? []) as Log[]).filter((l) => {
@@ -117,7 +117,7 @@ export async function getActiveVybe(userId: string, date: string, tz: string, hi
   const journal: JournalEntry[] = logsToday
     .map((l) => ({
       id: l.id, kind: l.kind, name: l.name, amount: l.amount, ounces: l.ounces == null ? null : Number(l.ounces), slot: l.time_slot,
-      calories: l.calories, protein: l.protein_g == null ? null : Number(l.protein_g), fromMenu: !!l.menu_item_id, at: l.logged_at,
+      calories: l.calories, protein: l.protein_g == null ? null : Number(l.protein_g), fromMenu: !!l.menu_item_id, estimated: l.nutrition_source === "estimated", at: l.logged_at,
     }))
     .sort((a, b) => slotIndex(a.slot) - slotIndex(b.slot) || a.at.localeCompare(b.at))
     .map(({ at: _at, ...e }) => e);
@@ -136,6 +136,8 @@ export async function getActiveVybe(userId: string, date: string, tz: string, hi
     waterOz: Math.round(logsToday.filter((l) => l.kind === "water").reduce((a, l) => a + Number(l.ounces ?? 0), 0)),
     nutrition: {
       calories: sum("calories"), protein: sum("protein_g"), carbs: sum("carbs_g"), fat: sum("fat_g"), meals: logsToday.filter((l) => l.kind === "food").length,
+      missing: logsToday.filter((l) => l.kind !== "water" && l.calories == null).length,
+      estimated: logsToday.some((l) => l.nutrition_source === "estimated"),
       target: t?.calories ? { calories: t.calories, protein: t.protein_g, carbs: t.carbs_g, fat: t.fat_g } : null,
     },
   };
