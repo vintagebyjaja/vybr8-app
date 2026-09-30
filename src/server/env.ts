@@ -9,6 +9,9 @@ const schema = z
     AI_PROVIDER: z.enum(["none", "openai"]).default("none"),
     OPENAI_API_KEY: z.string().optional(),
     OPENAI_MODEL: z.string().optional(),
+    // Food & drink calorie estimates on Active Vybe. Estimates turn on when the key is set.
+    ANTHROPIC_API_KEY: z.string().optional(),
+    NUTRITION_AI_MODEL: z.string().default("claude-haiku-4-5"),
     BILLING_PROVIDER: z.enum(["mock", "stripe"]).default("mock"),
     STRIPE_SECRET_KEY: z.string().optional(),
     STRIPE_WEBHOOK_SECRET: z.string().optional(),
@@ -22,8 +25,8 @@ const schema = z
   .superRefine((env, ctx) => {
     if (env.AI_PROVIDER === "openai" && !env.OPENAI_API_KEY)
       ctx.addIssue({ code: "custom", path: ["OPENAI_API_KEY"], message: "Required when AI_PROVIDER=openai" });
-    if (env.BILLING_PROVIDER === "stripe" && (!env.STRIPE_SECRET_KEY || !env.STRIPE_WEBHOOK_SECRET))
-      ctx.addIssue({ code: "custom", path: ["STRIPE_SECRET_KEY"], message: "Stripe keys required when BILLING_PROVIDER=stripe" });
+    if (env.BILLING_PROVIDER === "stripe" && !env.STRIPE_SECRET_KEY)
+      ctx.addIssue({ code: "custom", path: ["STRIPE_SECRET_KEY"], message: "STRIPE_SECRET_KEY required when BILLING_PROVIDER=stripe (the webhook also needs STRIPE_WEBHOOK_SECRET)" });
   });
 
 const blankToUndefined = (obj: NodeJS.ProcessEnv) =>
