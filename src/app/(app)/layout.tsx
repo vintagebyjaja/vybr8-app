@@ -46,6 +46,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <Link href="/birthday" className="inline-flex min-h-11 items-center rounded-full border border-line bg-surface px-4 text-sm font-semibold hover:bg-surface-2">
             <span className="vybe-text">Birthday Perks</span>
           </Link>
+          {viewer && viewer.platformRoles.length > 0 && (
+            <Link href={viewer.platformRoles.includes("admin") ? "/admin" : "/team"} aria-label={viewer.platformRoles.includes("admin") ? "Admin" : "VYBR8 Team tools"}
+              className="inline-flex min-h-11 items-center rounded-full border border-mint/50 bg-surface px-3 text-sm font-bold text-mint hover:bg-surface-2 sm:px-4">
+              {viewer.platformRoles.includes("admin") ? "Admin" : "Team"}
+            </Link>
+          )}
           {viewer && <AlertsLink unread={unread} />}
           </div>
         </div>

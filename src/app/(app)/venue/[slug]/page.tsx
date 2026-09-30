@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { OSM_ATTRIBUTION, OSM_COPYRIGHT_URL } from "@/domain/places/osm";
+import { openStatus, weekSchedule } from "@/domain/map/hours";
 import { notFound, redirect } from "next/navigation";
 import { PerkCard } from "@/components/birthday/PerkCard";
 import { PostButton } from "@/components/posts/PostButton";
@@ -14,12 +15,13 @@ import { MenuList } from "@/components/menu/MenuList";
 import { RatePlace } from "@/components/ratings/RatePlace";
 import { ApprovedBadge } from "@/components/places/ApprovedBadge";
 import { placeTitle } from "@/domain/places/places";
-import { setBrand } from "@/app/(app)/places/actions";
+import { reportClosed, reviewClosure, setBrand, submitHours } from "@/app/(app)/places/actions";
+import { HoursEditor } from "@/components/places/HoursEditor";
 import { RankBadge } from "@/components/charts/RankBadge";
-import { findCity } from "@/domain/map/map";
+import { findCity, localClock, type Hours } from "@/domain/map/map";
 import { ranksForBusiness } from "@/server/charts";
 
-type Params = { params: Promise<{ slug: string }>; searchParams: Promise<{ added?: string }> };
+type Params = { params: Promise<{ slug: string }>; searchParams: Promise<{ added?: string; closed?: string; hours?: string }> };
 
 const KIND_LABEL: Record<string, string> = {
   restaurant: "Restaurant", bar: "Bar", cocktail_lounge: "Cocktail lounge", lounge: "Lounge", cigar_lounge: "Cigar lounge",
@@ -30,7 +32,7 @@ async function loadVenue(slug: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("businesses")
-    .select("id, slug, name, branch_name, kind, description, price_level, website, phone, source, is_demo, is_claimed, status, brand_id, brand:brands ( name ), locations:business_locations ( label, address_line1, city, city_slug, region, postal_code, is_primary )")
+    .select("id, slug, name, branch_name, kind, description, price_level, website, phone, source, is_demo, is_claimed, status, closed_at, brand_id, brand:brands ( name ), locations:business_locations ( id, label, address_line1, city, city_slug, region, postal_code, is_primary, timezone, hours:business_hours ( weekday, opens_at, closes_at ) )")
     .eq("slug", slug)
     .is("deleted_at", null)
     .maybeSingle();
@@ -44,7 +46,7 @@ export async function generateMetadata({ params }: Params) {
 
 export default async function VenuePage({ params, searchParams }: Params) {
   const { slug } = await params;
-  const { added } = await searchParams;
+  const { added, closed, hours: hoursMsg } = await searchParams;
   const venue = await loadVenue(slug);
   if (!venue) notFound();
   const viewerP = getViewer();
@@ -83,10 +85,16 @@ export default async function VenuePage({ params, searchParams }: Params) {
     citySlug ? ranksForBusiness(venue.id as string, citySlug, findCity(citySlug).name) : Promise.resolve({ place: null, items: {} }),
   ]);
   if (venue.kind === "food_truck") redirect(`/food-trucks/${venue.slug}`);
-  const locations = (venue.locations ?? []) as { label: string | null; address_line1: string | null; city: string; region: string; postal_code: string | null; is_primary: boolean }[];
+  const locations = (venue.locations ?? []) as { id: string; label: string | null; address_line1: string | null; city: string; region: string; postal_code: string | null; is_primary: boolean; timezone: string; hours: { weekday: number; opens_at: string; closes_at: string }[] | null }[];
   const brand = (Array.isArray(venue.brand) ? venue.brand[0] : venue.brand) as { name: string } | null;
   const isStaff = !!viewer?.platformRoles.length;
+  const { data: canEditRaw } = viewer && !isStaff ? await (await createClient()).rpc("can_edit_place", { p_business: venue.id }) : { data: null };
+  const canEditHours = isStaff || canEditRaw === true;
   const primary = locations.find((l) => l.is_primary) ?? locations[0];
+  const hours: Hours[] = (primary?.hours ?? []).map((h) => ({ weekday: h.weekday, opensAt: h.opens_at, closesAt: h.closes_at }));
+  const status = primary ? openStatus(hours, primary.timezone) : null;
+  const week = weekSchedule(hours);
+  const todayDow = primary ? localClock(primary.timezone, new Date()).weekday : -1;
   const plates = page.posts.filter((p) => p.kind === "plate").length;
   const pours = page.posts.filter((p) => p.kind === "pour").length;
 
@@ -104,9 +112,32 @@ export default async function VenuePage({ params, searchParams }: Params) {
           {venue.is_claimed && <ApprovedBadge />}
         </div>
         {ranks.place && <div><RankBadge badge={ranks.place} /></div>}
-        {primary?.address_line1 && (
-          <p className="text-sm text-muted">{primary.address_line1}, {primary.city}, {primary.region}{primary.postal_code ? ` ${primary.postal_code}` : ""}</p>
+        {primary && (
+          <p className="text-sm text-muted">
+            {primary.address_line1 ? `${primary.address_line1}, ` : ""}{primary.city}, {primary.region}{primary.postal_code ? ` ${primary.postal_code}` : ""}
+            {primary.address_line1 && (
+              <> · <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${venue.name} ${primary.address_line1} ${primary.city} ${primary.region}`)}`} target="_blank" rel="noopener noreferrer" className="font-semibold text-sky hover:underline">Directions</a></>
+            )}
+          </p>
         )}
+        {status ? (
+          <a href="#hours-h" className={`self-start text-sm font-bold ${status.open ? "text-mint" : "text-coral"}`}>{status.line}</a>
+        ) : (
+          <a href="#hours-h" className="self-start text-sm text-faint">Hours not listed yet</a>
+        )}
+        {venue.status === "hidden" && venue.closed_at && (
+          <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-danger/50 bg-danger/10 p-3 text-sm">
+            <span>Marked <b>permanently closed</b>. Hidden from lists, the map and search. Only the VYBR8 Team sees this page.</span>
+            {isStaff && (
+              <form action={reviewClosure}>
+                <input type="hidden" name="business" value={venue.id as string} /><input type="hidden" name="closed" value="0" /><input type="hidden" name="back" value={`/venue/${venue.slug}`} />
+                <button className="rounded-full border border-line px-4 py-1.5 text-xs font-bold">It&rsquo;s open: bring it back</button>
+              </form>
+            )}
+          </div>
+        )}
+        {closed === "reported" && <p role="status" className="rounded-xl border border-sky/40 bg-sky/10 p-3 text-sm">Thanks for the heads up. Once a few people confirm, VYBR8 takes it down.</p>}
+        {closed === "error" && <p role="alert" className="rounded-xl border border-danger/50 p-3 text-sm text-danger">That didn&rsquo;t go through. Try again.</p>}
         {venue.status === "pending" && (
           <p role="status" className="rounded-xl border border-sky/40 bg-sky/10 p-3 text-sm">
             {added ? "Thanks for adding it! " : ""}The VYBR8 Team is taking a quick look. Only you can see this place until it&rsquo;s live.
@@ -185,9 +216,59 @@ export default async function VenuePage({ params, searchParams }: Params) {
         </form>
       )}
 
+      <section aria-labelledby="hours-h" className="flex scroll-mt-4 flex-col gap-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="hours-h" className="text-xl font-bold">Hours</h2>
+          {status && <span className={`text-sm font-bold ${status.open ? "text-mint" : "text-coral"}`}>{status.line}</span>}
+        </div>
+        {hours.length ? (
+          <dl className="grid max-w-md gap-1 rounded-2xl border border-line bg-surface p-4 text-sm">
+            {week.map((d) => (
+              <div key={d.weekday} className={`flex justify-between gap-4 ${d.weekday === todayDow ? "font-bold text-text" : "text-muted"}`}>
+                <dt>{d.name}{d.weekday === todayDow ? " (today)" : ""}</dt>
+                <dd className="text-right tabular-nums">{d.ranges.length ? d.ranges.join(", ") : "Closed"}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p className="rounded-2xl border border-dashed border-line p-5 text-sm text-muted">
+            Hours aren&rsquo;t listed yet.{" "}
+            {!venue.is_claimed && <>Own it? <Link href={`/venue/${venue.slug}/claim`} className="font-semibold text-coral">Claim it</Link> to add your hours. </>}
+            Know them? Add them below.
+          </p>
+        )}
+        {hours.length > 0 && <p className="text-xs text-faint">Hours can change on holidays. {venue.source === "osm" && !venue.is_claimed ? "Listed from OpenStreetMap." : ""}</p>}
+        {hoursMsg === "saved" && <p role="status" className="text-sm text-mint">Hours saved. They&rsquo;re live.</p>}
+        {hoursMsg === "suggested" && <p role="status" className="text-sm text-mint">Thanks! The VYBR8 Team will check the hours and put them up.</p>}
+        {hoursMsg === "error" && <p role="alert" className="text-sm text-danger">Those hours didn&rsquo;t save. Check the times and try again.</p>}
+        {primary && (viewer ? (
+          <details className="max-w-xl rounded-2xl border border-line bg-surface p-4" open={hoursMsg === "error"}>
+            <summary className="cursor-pointer list-none text-sm font-bold text-sky">
+              {canEditHours ? (hours.length ? "Edit hours" : "Add hours") : hours.length ? "Hours wrong? Suggest a fix" : "Know the hours? Add them"}
+            </summary>
+            <div className="mt-3">
+              <HoursEditor action={submitHours} locationId={primary.id} slug={venue.slug as string} initial={hours} mode={canEditHours ? "save" : "suggest"} />
+            </div>
+          </details>
+        ) : (
+          <Link href={`/auth/sign-in?next=/venue/${venue.slug}`} className="text-sm font-semibold text-sky">Know the hours? Sign in to add them</Link>
+        ))}
+      </section>
+
       <section aria-labelledby="menu-h" className="flex flex-col gap-3">
         <h2 id="menu-h" className="text-xl font-bold">Menu &amp; VYBR8 scores</h2>
-        <MenuList items={menu} signedIn={!!viewer} returnTo={`/venue/${venue.slug}`} ranks={ranks.items} />
+        {menu.length ? (
+          <MenuList items={menu} signedIn={!!viewer} returnTo={`/venue/${venue.slug}`} ranks={ranks.items} />
+        ) : (
+          <div className="flex flex-col gap-2 rounded-2xl border border-dashed border-line p-5 text-sm text-muted">
+            <p>No menu on VYBR8 yet. {venue.is_claimed ? "The owner can add it from their business page." : "Owners add their full menu, prices and nutrition when they claim this place."}</p>
+            <div className="flex flex-wrap gap-2">
+              {venue.website && <a href={venue.website as string} target="_blank" rel="noopener noreferrer" className="rounded-full border border-line px-4 py-2 font-bold text-text hover:bg-surface-2">See their menu on their website</a>}
+              <Link href={viewer ? `/post/new?venue=${venue.slug}` : `/auth/sign-in?next=/post/new?venue=${venue.slug}`} className="rounded-full border border-line px-4 py-2 font-bold text-text hover:bg-surface-2">Ate here? Post your plate</Link>
+              {!venue.is_claimed && !venue.is_demo && <Link href={`/venue/${venue.slug}/claim`} className="rounded-full border border-coral/50 px-4 py-2 font-bold text-coral">Own it? Claim it</Link>}
+            </div>
+          </div>
+        )}
       </section>
 
       {perks.length > 0 && (
@@ -212,6 +293,17 @@ export default async function VenuePage({ params, searchParams }: Params) {
           empty={<>No one has posted from here yet. <Link href={`/post/new?venue=${venue.slug}`} className="font-semibold text-sky">Be the first</Link></>}
         />
       </section>
+
+      {viewer && venue.status === "active" && (
+        <form action={reportClosed} className="flex flex-wrap items-center gap-2 text-xs text-faint">
+          <input type="hidden" name="business" value={venue.id as string} /><input type="hidden" name="slug" value={venue.slug as string} />
+          {isStaff ? (
+            <button className="rounded-full border border-danger/60 px-4 py-2 font-bold text-danger hover:bg-danger/10">Team · Mark permanently closed</button>
+          ) : (
+            <>Closed for good? <button className="font-semibold underline hover:text-muted">Let us know</button></>
+          )}
+        </form>
+      )}
 
       {venue.source === "osm" && !venue.is_claimed && (
         <p className="text-xs text-faint">

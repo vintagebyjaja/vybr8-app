@@ -5,7 +5,8 @@ import { DemoBadge } from "@/components/ui/DemoBadge";
 import { CHEF_CLAIM_METHODS, CLAIM_METHODS, PLACE_KINDS, placeTitle } from "@/domain/places/places";
 import { createClient } from "@/lib/supabase/server";
 import { AuthorizationError, requireAdmin } from "@/server/auth";
-import { decideChefClaim, reviewPlace } from "@/app/(app)/places/actions";
+import { decideChefClaim, reviewClosure, reviewHours, reviewPlace } from "@/app/(app)/places/actions";
+import { weekSchedule } from "@/domain/map/hours";
 import { approveClaim, rejectClaim } from "./actions";
 
 export const metadata = { title: "Admin" };
@@ -23,7 +24,7 @@ export default async function AdminPage() {
   }
 
   const supabase = await createClient();
-  const [{ data: places }, { data: claims }, { data: chefClaims }, { count: openTickets }] = await Promise.all([
+  const [{ data: places }, { data: claims }, { data: chefClaims }, { count: openTickets }, { data: closures }, { data: hoursQ }] = await Promise.all([
     supabase
       .from("businesses")
       .select("id, slug, name, branch_name, kind, website, source, created_at, submitter:profiles!businesses_created_by_fkey ( username ), locations:business_locations ( address_line1, city, region, latitude )")
@@ -41,7 +42,14 @@ export default async function AdminPage() {
       .eq("status", "pending")
       .order("created_at"),
     supabase.from("support_tickets").select("id", { count: "exact", head: true }).eq("status", "open"),
+    supabase.rpc("closure_report_queue"),
+    supabase.rpc("hours_suggestion_queue"),
   ]);
+  type HourRow = { weekday: number; opens: string; closes: string };
+  const hourRows = (hoursQ ?? []) as { id: string; slug: string; name: string; branch_name: string | null; hours: HourRow[]; note: string | null; username: string | null; created_at: string; current: HourRow[] }[];
+  const weekText = (h: HourRow[]) => weekSchedule(h.map((x) => ({ weekday: x.weekday, opensAt: x.opens, closesAt: x.closes })))
+    .map((d) => `${d.name.slice(0, 3)} ${d.ranges.length ? d.ranges.join(", ") : "closed"}`);
+  const closureRows = (closures ?? []) as { business_id: string; slug: string; name: string; branch_name: string | null; status: string; closed_at: string | null; reports: number; last_report: string }[];
 
   // Short-lived links to private proof documents.
   const docPaths = [...(claims ?? []), ...(chefClaims ?? [])].map((c) => c.document_path as string | null).filter((p): p is string => !!p);
@@ -62,6 +70,58 @@ export default async function AdminPage() {
           </Link>
         </div>
       </div>
+
+      <section id="hours-queue" aria-labelledby="hours-q" className="flex flex-col gap-3">
+        <h2 id="hours-q" className="text-lg font-bold">Suggested hours ({hourRows.length})</h2>
+        {hourRows.length === 0 ? <p className="text-sm text-muted">None waiting.</p> : (
+          <ul className="flex flex-col gap-2">
+            {hourRows.map((h) => (
+              <li key={h.id} className="flex flex-col gap-2 rounded-2xl border border-line bg-surface p-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <Link href={`/venue/${h.slug}#hours-h`} className="font-bold hover:underline">{placeTitle(h.name, h.branch_name)}</Link>
+                  <span className="text-xs text-faint">{h.username ? `@${h.username}` : "someone"}{h.note ? ` · “${h.note}”` : ""}</span>
+                </div>
+                <div className="grid gap-3 text-xs sm:grid-cols-2">
+                  <div><p className="font-bold text-mint">Suggested</p><ul className="text-muted">{weekText(h.hours).map((t) => <li key={t}>{t}</li>)}</ul></div>
+                  <div><p className="font-bold text-faint">Now on VYBR8</p>{h.current.length ? <ul className="text-faint">{weekText(h.current).map((t) => <li key={t}>{t}</li>)}</ul> : <p className="text-faint">No hours yet</p>}</div>
+                </div>
+                <div className="flex gap-2">
+                  {[["1", "Approve", "border-mint/60 text-mint"], ["0", "Reject", "border-line text-muted"]].map(([v, label, tone]) => (
+                    <form key={v} action={reviewHours}>
+                      <input type="hidden" name="id" value={h.id} /><input type="hidden" name="approve" value={v} />
+                      <button className={`min-h-10 rounded-full border px-4 text-sm font-bold ${tone}`}>{label}</button>
+                    </form>
+                  ))}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section aria-labelledby="closures" className="flex flex-col gap-3">
+        <h2 id="closures" className="text-lg font-bold">Reported closed ({closureRows.length})</h2>
+        {closureRows.length === 0 ? <p className="text-sm text-muted">No reports.</p> : (
+          <ul className="flex flex-col gap-2">
+            {closureRows.map((c) => (
+              <li key={c.business_id} className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-line bg-surface p-4">
+                <div>
+                  <Link href={`/venue/${c.slug}`} className="font-bold hover:underline">{placeTitle(c.name, c.branch_name)}</Link>
+                  <p className="text-xs text-muted">{c.reports} {Number(c.reports) === 1 ? "report" : "reports"} · {c.status === "hidden" ? "hidden now" : "still showing"}</p>
+                </div>
+                <div className="flex gap-2">
+                  {[["1", c.status === "hidden" ? "Confirm closed" : "Close it", "border-danger/60 text-danger"], ["0", "Still open", "border-line"]].map(([v, label, tone]) => (
+                    <form key={v} action={reviewClosure}>
+                      <input type="hidden" name="business" value={c.business_id} /><input type="hidden" name="closed" value={v} /><input type="hidden" name="back" value="/admin" />
+                      <button className={`min-h-10 rounded-full border px-4 text-sm font-bold ${tone}`}>{label}</button>
+                    </form>
+                  ))}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section aria-labelledby="places" className="flex flex-col gap-3">
         <h2 id="places" className="text-lg font-bold">New places to review ({places?.length ?? 0})</h2>

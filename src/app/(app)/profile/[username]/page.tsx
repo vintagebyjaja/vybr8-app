@@ -101,6 +101,23 @@ export default async function ProfilePage({ params }: Params) {
         )}
       </div>
 
+      {showTeamTools && (
+        <section aria-labelledby="tools-h" className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-mint/40 bg-surface p-5">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 id="tools-h" className="font-bold">{viewer!.platformRoles.includes("admin") ? "Founder & admin tools" : "VYBR8 Team tools"}</h2>
+            <span className="text-xs text-faint">Only you see this</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(viewer!.platformRoles.includes("admin")
+              ? [["/admin", "Admin"], ["/admin/import", "Import real places"], ["/admin/support", "Support inbox"], ["/team/moderation", "Moderation"], ["/team/creators", "Creator queue"]]
+              : [["/admin/support", "Support inbox"], ["/team/moderation", "Moderation"], ["/team/creators", "Creator queue"]]
+            ).map(([href, label], i) => (
+              <Link key={href} href={href!} className={`inline-flex min-h-11 items-center rounded-full px-5 text-sm font-bold ${i === 0 ? "bg-mint text-ink" : "border border-line hover:bg-surface-2"}`}>{label}</Link>
+            ))}
+          </div>
+        </section>
+      )}
+
       {isMe && !creatorType && (
         <section className="rounded-[var(--radius-card)] vybe-ring flex flex-col gap-2 p-5">
           <h2 className="text-lg font-bold">Big Back or Liquid Lover?</h2>

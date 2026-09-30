@@ -5788,3 +5788,270 @@ as $$
    limit least(greatest(p_limit, 1), 40);
 $$;
 grant execute on function public.city_cuisines(text, int) to anon, authenticated;
+
+-- ═════ 20261013000100_closed_places.sql ═════
+-- VYBR8 · Permanently closed places
+--
+-- • The VYBR8 Team marks a place permanently closed in one tap: it disappears from lists, the map and search.
+-- • Anyone signed in can report "closed for good". Three different people within 90 days hide it automatically,
+--   and it shows on the Admin page so the team can confirm or bring it back.
+-- • Nothing is deleted: a place that reopens (or was reported by mistake) comes back with its history.
+
+alter table public.businesses add column closed_at timestamptz;
+
+create table public.place_closure_reports (
+  business_id  uuid not null references public.businesses (id) on delete cascade,
+  user_id      uuid not null default auth.uid() references public.profiles (id) on delete cascade,
+  created_at   timestamptz not null default now(),
+  primary key (business_id, user_id)
+);
+alter table public.place_closure_reports enable row level security;
+create policy "place_closure_reports: see your own, team sees all" on public.place_closure_reports for select to authenticated
+  using (user_id = (select auth.uid()) or private.is_staff());
+-- Reports are made through report_place_closed() only.
+
+-- Trusted database functions may change a place's status on their own (the guard below lets them through).
+create or replace function private.businesses_guard()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if (select auth.uid()) is null or private.is_admin() or current_setting('vybr8.trusted', true) = 'on' then return new; end if;
+  if new.is_claimed  is distinct from old.is_claimed
+  or new.is_demo     is distinct from old.is_demo
+  or new.slug        is distinct from old.slug
+  or new.deleted_at  is distinct from old.deleted_at
+  or new.created_by  is distinct from old.created_by
+  or new.source      is distinct from old.source
+  or new.approved_at is distinct from old.approved_at
+  or new.closed_at   is distinct from old.closed_at then
+    raise exception 'claim, approval, demo, slug, source, closure and deletion fields are admin-only' using errcode = '42501';
+  end if;
+  if (new.status is distinct from old.status or new.brand_id is distinct from old.brand_id) and not private.is_staff() then
+    raise exception 'publishing a place and linking brands is done by the VYBR8 Team' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+-- "Closed for good?" The team's report closes it right away; three people's reports close it too.
+create or replace function public.report_place_closed(p_business uuid)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  me uuid := (select auth.uid());
+  n int;
+begin
+  if me is null then raise exception 'sign in to report a place' using errcode = '42501'; end if;
+  if not exists (select 1 from public.businesses where id = p_business and status = 'active' and deleted_at is null) then
+    return 'already_hidden';
+  end if;
+  if exists (select 1 from public.businesses b where b.id = p_business and b.is_claimed) and not private.is_staff() then
+    -- An owner runs this listing: send it to the team instead of hiding it automatically.
+    insert into public.place_closure_reports (business_id, user_id) values (p_business, me) on conflict do nothing;
+    return 'reported';
+  end if;
+  insert into public.place_closure_reports (business_id, user_id) values (p_business, me) on conflict do nothing;
+  select count(*) into n from public.place_closure_reports where business_id = p_business and created_at > now() - interval '90 days';
+  if private.is_staff() or n >= 3 then
+    perform set_config('vybr8.trusted', 'on', true);
+    update public.businesses set status = 'hidden', closed_at = now() where id = p_business;
+    perform set_config('vybr8.trusted', 'off', true);
+    insert into public.audit_logs (actor_id, action, entity_type, entity_id, metadata)
+    values (me, 'place.closed', 'business', p_business, jsonb_build_object('reports', n, 'by_team', private.is_staff()));
+    return 'closed';
+  end if;
+  return 'reported';
+end;
+$$;
+revoke all on function public.report_place_closed(uuid) from public, anon;
+grant execute on function public.report_place_closed(uuid) to authenticated;
+
+-- The team confirms a closure, or brings the place back (clearing the reports).
+create or replace function public.review_place_closure(p_business uuid, p_closed boolean)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not private.is_staff() then raise exception 'VYBR8 Team only' using errcode = '42501'; end if;
+  perform set_config('vybr8.trusted', 'on', true);
+  if p_closed then
+    update public.businesses set status = 'hidden', closed_at = coalesce(closed_at, now()) where id = p_business;
+  else
+    update public.businesses set status = 'active', closed_at = null where id = p_business and deleted_at is null;
+    delete from public.place_closure_reports where business_id = p_business;
+  end if;
+  perform set_config('vybr8.trusted', 'off', true);
+  insert into public.audit_logs (actor_id, action, entity_type, entity_id, metadata)
+  values ((select auth.uid()), case when p_closed then 'place.closure_confirmed' else 'place.reopened' end, 'business', p_business, '{}');
+end;
+$$;
+revoke all on function public.review_place_closure(uuid, boolean) from public, anon;
+grant execute on function public.review_place_closure(uuid, boolean) to authenticated;
+
+-- For the Admin page: places people reported, newest first.
+create or replace function public.closure_report_queue()
+returns table (business_id uuid, slug text, name text, branch_name text, status text, closed_at timestamptz, reports bigint, last_report timestamptz)
+language sql stable security definer
+set search_path = ''
+as $$
+  select b.id, b.slug::text, b.name, b.branch_name, b.status::text, b.closed_at, count(*), max(r.created_at)
+    from public.place_closure_reports r join public.businesses b on b.id = r.business_id
+   where private.is_staff() and b.deleted_at is null and r.created_at > now() - interval '90 days'
+   group by b.id
+   order by max(r.created_at) desc
+   limit 100;
+$$;
+grant execute on function public.closure_report_queue() to authenticated;
+
+-- ═════ 20261014000100_hours_editing.sql ═════
+-- VYBR8 · Adding and fixing opening hours
+--
+-- • Owners of a claimed place and the VYBR8 Team set hours directly.
+-- • Anyone signed in who knows the hours (walked by, works there, called) can suggest them.
+--   Suggestions go to the Admin page; approving one puts the hours live.
+
+create table public.hours_suggestions (
+  id           uuid primary key default gen_random_uuid(),
+  location_id  uuid not null references public.business_locations (id) on delete cascade,
+  user_id      uuid not null default auth.uid() references public.profiles (id) on delete cascade,
+  hours        jsonb not null check (jsonb_typeof(hours) = 'array' and jsonb_array_length(hours) <= 21),
+  note         text check (note is null or char_length(note) <= 200),
+  status       text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  reviewed_by  uuid references public.profiles (id) on delete set null,
+  created_at   timestamptz not null default now()
+);
+create index hours_suggestions_pending_idx on public.hours_suggestions (created_at) where status = 'pending';
+alter table public.hours_suggestions enable row level security;
+create policy "hours_suggestions: yours, and the team sees all" on public.hours_suggestions for select to authenticated
+  using (user_id = (select auth.uid()) or private.is_staff());
+-- Written through submit_place_hours() and review_hours_suggestion() only.
+
+-- Replace a location's hours with a clean list. [{ "weekday": 1, "opens": "11:00", "closes": "22:00" }, …]
+create or replace function private.apply_hours(p_location uuid, p_hours jsonb)
+returns int
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  h jsonb; n int := 0;
+begin
+  delete from public.business_hours where location_id = p_location;
+  for h in select * from jsonb_array_elements(p_hours) loop
+    insert into public.business_hours (location_id, weekday, opens_at, closes_at)
+    values (p_location, (h ->> 'weekday')::smallint, (h ->> 'opens')::time, (h ->> 'closes')::time)
+    on conflict do nothing;
+    n := n + 1;
+  end loop;
+  return n;
+end;
+$$;
+
+-- Check the list before anything is saved: real weekdays and real times.
+create or replace function private.valid_hours(p_hours jsonb)
+returns boolean
+language plpgsql immutable
+set search_path = ''
+as $$
+declare h jsonb;
+begin
+  if jsonb_typeof(p_hours) <> 'array' or jsonb_array_length(p_hours) > 21 then return false; end if;
+  for h in select * from jsonb_array_elements(p_hours) loop
+    if (h ->> 'weekday')::int not between 0 and 6 then return false; end if;
+    if h ->> 'opens' !~ '^([01]\d|2[0-3]):[0-5]\d$' or h ->> 'closes' !~ '^([01]\d|2[0-3]):[0-5]\d$' then return false; end if;
+  end loop;
+  return true;
+exception when others then return false;
+end;
+$$;
+
+-- Owners and the team: saved right away. Everyone else: a suggestion for the team to check.
+create or replace function public.submit_place_hours(p_location uuid, p_hours jsonb, p_note text default null)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  me uuid := (select auth.uid());
+  biz uuid;
+begin
+  if me is null then raise exception 'sign in to add hours' using errcode = '42501'; end if;
+  if not private.valid_hours(p_hours) then raise exception 'Check the days and times.' using errcode = '22023'; end if;
+  select l.business_id into biz from public.business_locations l join public.businesses b on b.id = l.business_id
+   where l.id = p_location and b.deleted_at is null;
+  if biz is null then raise exception 'place not found' using errcode = 'P0002'; end if;
+
+  if private.is_staff() or private.can_edit_business(biz) then
+    perform private.apply_hours(p_location, p_hours);
+    insert into public.audit_logs (actor_id, action, entity_type, entity_id, metadata)
+    values (me, 'place.hours_set', 'business', biz, jsonb_build_object('location', p_location));
+    return 'saved';
+  end if;
+
+  if (select count(*) from public.hours_suggestions where user_id = me and created_at > now() - interval '1 day') >= 10 then
+    raise exception 'You''ve sent a lot of hours today. Thanks! Try again tomorrow.' using errcode = '22023';
+  end if;
+  insert into public.hours_suggestions (location_id, user_id, hours, note) values (p_location, me, p_hours, nullif(trim(p_note), ''));
+  return 'suggested';
+end;
+$$;
+revoke all on function public.submit_place_hours(uuid, jsonb, text) from public, anon;
+grant execute on function public.submit_place_hours(uuid, jsonb, text) to authenticated;
+
+create or replace function public.review_hours_suggestion(p_id uuid, p_approve boolean)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare s public.hours_suggestions;
+begin
+  if not private.is_staff() then raise exception 'VYBR8 Team only' using errcode = '42501'; end if;
+  select * into s from public.hours_suggestions where id = p_id and status = 'pending' for update;
+  if not found then return; end if;
+  if p_approve then
+    perform private.apply_hours(s.location_id, s.hours);
+    -- Other pending suggestions for the same place are settled by this one.
+    update public.hours_suggestions set status = 'rejected', reviewed_by = (select auth.uid())
+     where location_id = s.location_id and status = 'pending' and id <> s.id;
+  end if;
+  update public.hours_suggestions set status = case when p_approve then 'approved' else 'rejected' end, reviewed_by = (select auth.uid()) where id = s.id;
+end;
+$$;
+revoke all on function public.review_hours_suggestion(uuid, boolean) from public, anon;
+grant execute on function public.review_hours_suggestion(uuid, boolean) to authenticated;
+
+-- Can the signed-in person edit this place (owner/manager or admin)? Used to show "Edit hours" instead of "Suggest".
+create or replace function public.can_edit_place(p_business uuid)
+returns boolean
+language sql stable security definer
+set search_path = ''
+as $$ select coalesce((select auth.uid()) is not null and private.can_edit_business(p_business), false); $$;
+grant execute on function public.can_edit_place(uuid) to authenticated;
+
+-- For the Admin page: pending hours with the place they're for.
+create or replace function public.hours_suggestion_queue()
+returns table (id uuid, slug text, name text, branch_name text, hours jsonb, note text, username text, created_at timestamptz, current jsonb)
+language sql stable security definer
+set search_path = ''
+as $$
+  select s.id, b.slug::text, b.name, b.branch_name, s.hours, s.note, p.username::text, s.created_at,
+         coalesce((select jsonb_agg(jsonb_build_object('weekday', h.weekday, 'opens', to_char(h.opens_at, 'HH24:MI'), 'closes', to_char(h.closes_at, 'HH24:MI')))
+                     from public.business_hours h where h.location_id = s.location_id), '[]'::jsonb)
+    from public.hours_suggestions s
+    join public.business_locations l on l.id = s.location_id
+    join public.businesses b on b.id = l.business_id
+    left join public.profiles p on p.id = s.user_id
+   where s.status = 'pending' and private.is_staff()
+   order by s.created_at
+   limit 100;
+$$;
+grant execute on function public.hours_suggestion_queue() to authenticated;

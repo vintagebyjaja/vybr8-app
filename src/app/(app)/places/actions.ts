@@ -137,3 +137,69 @@ export async function decideChefClaim(form: FormData) {
   if (error) log.warn("chefs.claim_decision_failed", { code: error.code });
   revalidatePath("/admin");
 }
+
+// ── Permanently closed ────────────────────────────────────────────────
+/** "Closed for good?" The team's tap closes it right away; three people's reports close it too. */
+export async function reportClosed(form: FormData) {
+  const slug = String(form.get("slug") ?? "");
+  await requireViewer(`/venue/${slug}`);
+  const id = z.uuid().safeParse(form.get("business"));
+  if (!id.success || !/^[a-z0-9-]{1,80}$/.test(slug)) return;
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("report_place_closed", { p_business: id.data });
+  if (error) {
+    log.warn("places.report_closed_failed", { code: error.code });
+    back(`/venue/${slug}`, { closed: "error" });
+  }
+  revalidatePath("/eat");
+  revalidatePath("/", "layout");
+  if (data === "closed") redirect(`/eat?${new URLSearchParams({ closed: "1" })}`);
+  back(`/venue/${slug}`, { closed: "reported" });
+}
+
+/** Team: confirm a closure, or bring a place back (clears the reports). */
+export async function reviewClosure(form: FormData) {
+  await requireStaff();
+  const p = z.object({ business: z.uuid(), closed: z.enum(["1", "0"]), back: z.string().optional() }).safeParse(Object.fromEntries(form));
+  if (!p.success) return;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("review_place_closure", { p_business: p.data.business, p_closed: p.data.closed === "1" });
+  if (error) log.warn("places.review_closure_failed", { code: error.code });
+  revalidatePath("/admin");
+  revalidatePath("/", "layout");
+  const to = p.data.back && /^\/(admin|venue\/[a-z0-9-]{1,80})$/.test(p.data.back) ? p.data.back : "/admin";
+  redirect(to);
+}
+
+// ── Opening hours ─────────────────────────────────────────────────────
+/** Owners and the team save hours right away; anyone else's go to the team to check. */
+export async function submitHours(form: FormData) {
+  const slug = String(form.get("slug") ?? "");
+  if (!/^[a-z0-9-]{1,80}$/.test(slug)) return;
+  await requireViewer(`/venue/${slug}`);
+  const p = z.object({ location: z.uuid(), hours: z.string().max(4000), note: optText(200) }).safeParse(Object.fromEntries(form));
+  if (!p.success) back(`/venue/${slug}`, { hours: "error" });
+  let hours: unknown;
+  try { hours = JSON.parse(p.data!.hours); } catch { back(`/venue/${slug}`, { hours: "error" }); }
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("submit_place_hours", { p_location: p.data!.location, p_hours: hours, p_note: p.data!.note ?? null });
+  if (error) {
+    log.warn("places.hours_failed", { code: error.code });
+    back(`/venue/${slug}`, { hours: "error" });
+  }
+  revalidatePath(`/venue/${slug}`);
+  if (data === "saved") revalidatePath("/eat");
+  redirect(`/venue/${slug}?hours=${data === "saved" ? "saved" : "suggested"}#hours-h`);
+}
+
+/** Team: approve or reject suggested hours. */
+export async function reviewHours(form: FormData) {
+  await requireStaff();
+  const p = z.object({ id: z.uuid(), approve: z.enum(["1", "0"]) }).safeParse(Object.fromEntries(form));
+  if (!p.success) return;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("review_hours_suggestion", { p_id: p.data.id, p_approve: p.data.approve === "1" });
+  if (error) log.warn("places.review_hours_failed", { code: error.code });
+  revalidatePath("/admin");
+  redirect("/admin#hours-queue");
+}

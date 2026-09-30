@@ -18,7 +18,7 @@ export const metadata = { title: "What Should I Eat?" };
 const PHOTOS = new Set(["charlotte", "atlanta", "nashville", "houston", "phoenix", "dc", "brooklyn", "miami"]);
 const chip = (on: boolean) => `shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${on ? "bg-text text-ink" : "border border-line text-muted hover:text-text"}`;
 
-type Search = { searchParams: Promise<{ city?: string; lat?: string; lng?: string; type?: string; cuisine?: string; q?: string; open?: string; sort?: string; page?: string; saved?: string }> };
+type Search = { searchParams: Promise<{ city?: string; lat?: string; lng?: string; type?: string; cuisine?: string; q?: string; open?: string; sort?: string; page?: string; saved?: string; closed?: string }> };
 
 export default async function WhatToEatPage({ searchParams }: Search) {
   const sp = await searchParams;
@@ -109,6 +109,7 @@ export default async function WhatToEatPage({ searchParams }: Search) {
       ) : (
         <Link href="/auth/sign-in?next=/eat" className="rounded-2xl border border-lavender/40 bg-surface p-4 text-sm font-bold text-lavender">Sign in and add your tastes to see your matches first →</Link>
       )}
+      {sp.closed && <p role="status" className="text-sm text-mint">Marked permanently closed. It&rsquo;s gone from VYBR8.</p>}
       {sp.saved && <p role="status" className="text-sm text-mint">Tastes saved. Your matches are at the top.</p>}
 
       {places.length === 0 ? (
