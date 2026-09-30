@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addDays, formatClock, gaugeDash, isYmd, mergeDay, milesFrom, recommendationsFor, versusAverage } from "../../src/domain/health/health.ts";
+import { FOOD_SLOTS, blockAt, blocksFor, bodyHour, dayPart, daysLabel, mostActive, vybeDay, addDays, formatClock, hourIn, slotForHour, slotIndex, gaugeDash, isYmd, mergeDay, milesFrom, recommendationsFor, versusAverage } from "../../src/domain/health/health.ts";
 
 test("two sources for one day never double count", () => {
   const m = mergeDay([
@@ -61,4 +61,58 @@ test("advice from sleep and activity", () => {
   assert.deepEqual(tired.recs.slice(0, 1), ["steady"]);
   assert.match(tired.sleepLine!, /Short night/);
   assert.equal(dayAdvice({ sleepMin: null, sleepGoal: 480, quality: null, level: "gaming", score: 0 }).dayType, "rest");
+});
+
+test("preselects the time of day from the hour", () => {
+    assert.equal(slotForHour(2), "midnight_munch");
+    assert.equal(slotForHour(5), "early_morning");
+    assert.equal(slotForHour(7), "before_work");
+    assert.equal(slotForHour(9), "breakfast");
+    assert.equal(slotForHour(12), "lunch");
+    assert.equal(slotForHour(16), "happy_hour");
+    assert.equal(slotForHour(19), "dinner");
+    assert.equal(slotForHour(22), "late_night_snack");
+  });
+test("keeps the slots in the order of the day", () => {
+    assert.deepEqual(FOOD_SLOTS.map((s) => s.key), ["early_morning", "before_work", "morning", "breakfast", "lunch", "happy_hour", "dinner", "late_night_snack", "midnight_munch"]);
+    assert.ok(slotIndex("dinner") > slotIndex("lunch"));
+    assert.equal(slotIndex(null), FOOD_SLOTS.length);
+  });
+test("reads the hour in a time zone", () => {
+    assert.equal(hourIn("America/New_York", new Date("2026-09-30T16:30:00Z")), 12);
+    assert.equal(hourIn("America/Phoenix", new Date("2026-09-30T07:00:00Z")), 0);
+  });
+
+test("a day person's day follows the clock", () => {
+  assert.equal(dayPart(8 * 60), "morning");
+  assert.equal(dayPart(13 * 60), "midday");
+  assert.equal(dayPart(21 * 60), "night");
+  assert.equal(vybeDay("2026-10-02", 1 * 60), "2026-10-01", "1 AM still belongs to last night");
+  assert.equal(vybeDay("2026-10-02", 5 * 60), "2026-10-02");
+});
+
+test("a night-shift worker (up at 3 PM) gets their own morning, midday and night", () => {
+  const wake = "15:00";
+  assert.equal(bodyHour(15 * 60, wake), 7);
+  assert.equal(dayPart(16 * 60, wake), "morning");
+  assert.equal(dayPart(23 * 60, wake), "midday");
+  assert.equal(dayPart(4 * 60, wake), "night");
+  assert.equal(vybeDay("2026-10-02", 2 * 60, wake), "2026-10-01", "2 AM on shift is still yesterday's day");
+  assert.equal(vybeDay("2026-10-02", 13 * 60, wake), "2026-10-02");
+});
+
+test("schedule blocks: weekdays, overnight shifts and the most active level", () => {
+  const work = { id: "w", label: "Work", level: "sitting" as const, days: [1, 2, 3, 4, 5], start: "09:00", end: "17:00" };
+  const shift = { id: "s", label: "Night shift", level: "active" as const, days: [5], start: "22:00", end: "06:00" };
+  assert.equal(blocksFor([work, shift], "2026-10-02").length, 2, "Friday");
+  assert.equal(blocksFor([work, shift], "2026-10-03").length, 0, "Saturday");
+  assert.equal(blockAt([work], 3, 10 * 60)?.id, "w");
+  assert.equal(blockAt([work], 3, 18 * 60), null);
+  assert.equal(blockAt([shift], 6, 3 * 60)?.id, "s", "Saturday 3 AM is still Friday night's shift");
+  assert.equal(mostActive(["sitting", null, "very_active"]), "very_active");
+  assert.equal(mostActive([]), null);
+  assert.equal(daysLabel([1, 2, 3, 4, 5]), "Mon–Fri");
+  assert.equal(daysLabel([0, 6]), "Weekends");
+  assert.equal(daysLabel([1, 3, 5]), "Mon, Wed, Fri");
+  assert.equal(daysLabel([2, 3, 4]), "Tue–Thu");
 });

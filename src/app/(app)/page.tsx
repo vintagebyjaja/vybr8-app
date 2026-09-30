@@ -15,8 +15,8 @@ import { ActiveVybeCard } from "@/components/home/ActiveVybeCard";
 import { QuickTiles } from "@/components/home/QuickTiles";
 import { WhatToEatCard } from "@/components/home/WhatToEatCard";
 import { findCity } from "@/domain/map/map";
-import { ACTIVITY_LEVELS, activityScore, dayAdvice, ymdIn } from "@/domain/health/health";
-import { getActiveVybe } from "@/server/health";
+import { ACTIVITY_LEVELS, DAY_PARTS, activityScore, dayAdvice } from "@/domain/health/health";
+import { getActiveVybe, getRhythm, nowFor } from "@/server/health";
 
 const INTENTS = [
   { href: "/explore?intent=eat", title: "Eat", line: "Find the best actual dish near you", tone: "text-orange" },
@@ -39,10 +39,12 @@ export default async function HomePage({ searchParams }: Search) {
   const bday = birth ? birthdayStatus(birth, todayIn()) : null;
   const citySlug = viewer ? await getViewerCity(viewer, cityParam) : null;
   const tz = findCity(citySlug).timezone;
+  const rhythm = viewer ? await getRhythm(viewer.id) : null;
+  const now = rhythm ? nowFor(rhythm, tz) : null;
   const [page, map, active] = await Promise.all([
     getFeed(feed === "following" && viewer ? { kind: "following", viewerId: viewer.id } : { kind: "creators" }, before),
     viewer && citySlug ? getMapData(citySlug, viewer) : Promise.resolve(null),
-    viewer ? getActiveVybe(viewer.id, ymdIn(tz), tz, 8) : Promise.resolve(null),
+    viewer && now ? getActiveVybe(viewer.id, now.day, tz, 8) : Promise.resolve(null),
   ]);
   const ci = active?.checkin ?? null;
   const dayType = active
@@ -70,7 +72,8 @@ export default async function HomePage({ searchParams }: Search) {
             { href: "/charts", label: "Charts", tone: "text-orange", icon: "trophy" },
             { href: "/food-trucks", label: "Food Trucks", tone: "text-mint", icon: "truck" },
           ]} />
-          <ActiveVybeCard sleepMin={active?.sleep?.minutes ?? null} goal={active?.sleepGoal ?? 480} wake={active?.sleep?.wakeTime ?? null} dayLabel={ACTIVITY_LEVELS.find((l) => l.key === ci?.level)?.label ?? null} />
+          <ActiveVybeCard sleepMin={active?.sleep?.minutes ?? null} goal={active?.sleepGoal ?? 480} wake={active?.sleep?.wakeTime ?? null} dayLabel={ACTIVITY_LEVELS.find((l) => l.key === ci?.level)?.label ?? null}
+            greeting={now ? DAY_PARTS.find((x) => x.key === now.part)?.greeting ?? null : null} due={now && active ? !active.checkins[now.part] : false} />
           <WhatToEatCard href={`/health/plan?type=${dayType}`} city={findCity(citySlug).slug} cityName={findCity(citySlug).name} />
           <QuickTiles tiles={[
             { href: "/charts?tab=food", label: "Big Back", tone: "text-orange", icon: "plate" },

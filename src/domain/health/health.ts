@@ -171,3 +171,142 @@ export function dayAdvice(input: { sleepMin: number | null; sleepGoal: number; q
   }
   return { dayType: "custom", recs: ["protein", "steady", "nutrient", "hydration"], line: "Balanced day. Protein at each meal and colorful plates keep you going.", sleepLine };
 }
+
+// ── "Have you already ate?" food & drink journal ─────────────────────────
+export const FOOD_SLOTS = [
+  { key: "early_morning", label: "Early morning" },
+  { key: "before_work", label: "Before work" },
+  { key: "morning", label: "Morning" },
+  { key: "breakfast", label: "Breakfast" },
+  { key: "lunch", label: "Lunch" },
+  { key: "happy_hour", label: "Happy hour" },
+  { key: "dinner", label: "Dinner" },
+  { key: "late_night_snack", label: "Late night snack" },
+  { key: "midnight_munch", label: "Midnight munch" },
+] as const;
+export type FoodSlot = (typeof FOOD_SLOTS)[number]["key"];
+export const FOOD_KINDS = [
+  { key: "food", label: "Food" },
+  { key: "drink", label: "Drink" },
+  { key: "water", label: "Water" },
+] as const;
+export type FoodKind = (typeof FOOD_KINDS)[number]["key"];
+
+/** The time of day that fits an hour (0–23), used to preselect a slot. */
+export function slotForHour(hour: number): FoodSlot {
+  if (hour < 4) return "midnight_munch";
+  if (hour < 6) return "early_morning";
+  if (hour < 8) return "before_work";
+  if (hour < 10) return "breakfast";
+  if (hour < 11) return "morning";
+  if (hour < 15) return "lunch";
+  if (hour < 18) return "happy_hour";
+  if (hour < 21) return "dinner";
+  return "late_night_snack";
+}
+
+/** Current hour (0–23) in a time zone. */
+export function hourIn(tz: string, d = new Date()): number {
+  const h = Number(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hourCycle: "h23" }).format(d));
+  return Number.isFinite(h) ? h % 24 : 12;
+}
+
+/** Sort position of a slot (unknown slots go last). */
+export function slotIndex(slot: string | null): number {
+  const i = FOOD_SLOTS.findIndex((s) => s.key === slot);
+  return i === -1 ? FOOD_SLOTS.length : i;
+}
+
+// ── Your rhythm: the Health tab follows the person's day, not the wall clock ──
+// Everything is worked out on a "body clock": the hour it would be if they woke at 7 AM.
+// A night-shift worker who wakes at 3 PM is in their "morning" at 4 PM, and 2 AM still counts as their day.
+
+export type DayPart = "morning" | "midday" | "night";
+export const DAY_PARTS: { key: DayPart; label: string; greeting: string; prompt: string }[] = [
+  { key: "morning", label: "Morning", greeting: "Good Morning, Let's Vybe", prompt: "How'd you sleep, and what's the plan today?" },
+  { key: "midday", label: "Midday", greeting: "How's the Vybe Going?", prompt: "What have you been up to?" },
+  { key: "night", label: "Night", greeting: "Time to Let the Vybes Rest", prompt: "How was the rest of your day?" },
+];
+export const DEFAULT_WAKE = "07:00";
+export const DEFAULT_BED = "23:00";
+
+export const toMinutes = (t: string): number => {
+  const [h = "0", m = "0"] = t.split(":");
+  return (Number(h) * 60 + Number(m)) % 1440;
+};
+
+/** Local date (YYYY-MM-DD) and minutes since midnight in a time zone. */
+export function clockIn(tz: string, d = new Date()): { ymd: string; minutes: number; weekday: number } {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", minute: "numeric", hourCycle: "h23" }).formatToParts(d);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  const ymd = ymdIn(tz, d);
+  return { ymd, minutes: (get("hour") % 24) * 60 + get("minute"), weekday: weekdayOf(ymd) };
+}
+
+/** 0 = Sunday … 6 = Saturday for a YYYY-MM-DD date. */
+export function weekdayOf(ymd: string): number {
+  return new Date(`${ymd}T12:00:00Z`).getUTCDay();
+}
+
+/** The hour (0–23) on the person's body clock: waking up is always 7. */
+export function bodyHour(clockMinutes: number, wake: string = DEFAULT_WAKE): number {
+  return Math.floor((((clockMinutes - toMinutes(wake) + 7 * 60) % 1440) + 1440) % 1440 / 60);
+}
+
+/** The day someone is living right now: it starts 3 hours before they usually wake up. */
+export function vybeDay(calendarYmd: string, clockMinutes: number, wake: string = DEFAULT_WAKE): string {
+  const offset = toMinutes(wake) - 180;
+  return addDays(calendarYmd, Math.floor((clockMinutes - offset) / 1440));
+}
+
+/** Morning for the first hours after waking, midday through the afternoon, night after that. */
+export function dayPart(clockMinutes: number, wake: string = DEFAULT_WAKE): DayPart {
+  const h = bodyHour(clockMinutes, wake);
+  if (h >= 4 && h < 11) return "morning";
+  if (h >= 11 && h < 18) return "midday";
+  return "night";
+}
+
+export type ScheduleBlock = { id: string; label: string; level: ActivityLevel; days: number[]; start: string; end: string };
+
+/** Blocks on the schedule for a day (by weekday). */
+export function blocksFor(blocks: ScheduleBlock[], ymd: string): ScheduleBlock[] {
+  const wd = weekdayOf(ymd);
+  return blocks.filter((b) => b.days.includes(wd)).sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
+}
+
+/** The block happening at a clock time on a weekday (handles overnight blocks that started the day before). */
+export function blockAt(blocks: ScheduleBlock[], weekday: number, clockMinutes: number): ScheduleBlock | null {
+  for (const b of blocks) {
+    const s = toMinutes(b.start);
+    const e = toMinutes(b.end);
+    if (s < e) { if (b.days.includes(weekday) && clockMinutes >= s && clockMinutes < e) return b; }
+    else if ((b.days.includes(weekday) && clockMinutes >= s) || (b.days.includes((weekday + 6) % 7) && clockMinutes < e)) return b;
+  }
+  return null;
+}
+
+/** The most active level among check-ins and the day's schedule (a desk day plus a gym night is an active day). */
+export function mostActive(levels: (ActivityLevel | null | undefined)[]): ActivityLevel | null {
+  let best: number | null = null;
+  for (const l of levels) {
+    const i = ACTIVITY_LEVELS.findIndex((x) => x.key === l);
+    if (i !== -1 && (best == null || i < best)) best = i;
+  }
+  return best == null ? null : ACTIVITY_LEVELS[best]!.key;
+}
+
+export const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+/** "Mon–Fri", "Weekends", "Every day" or "Mon, Wed, Fri". */
+export function daysLabel(days: number[]): string {
+  const s = [...new Set(days)].sort((a, b) => a - b);
+  if (s.length === 7) return "Every day";
+  if (s.join() === "1,2,3,4,5") return "Mon–Fri";
+  if (s.join() === "0,6") return "Weekends";
+  const run = s.length > 2 && s.every((d, i) => i === 0 || d === s[i - 1]! + 1);
+  return run ? `${WEEKDAYS[s[0]!]}–${WEEKDAYS[s[s.length - 1]!]}` : s.map((d) => WEEKDAYS[d]).join(", ");
+}
+
+/** Minutes since midnight → "HH:MM". */
+export const hhmm = (min: number): string => `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;

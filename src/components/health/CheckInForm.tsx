@@ -13,9 +13,10 @@ const TONE: Record<string, string> = {
 const chip = "cursor-pointer rounded-full border border-line px-3 py-1.5 text-sm font-semibold has-[:checked]:border-text has-[:checked]:bg-text has-[:checked]:text-ink";
 
 /** "How was your day?" Pick a level, then say what you did and (optionally) about how far you walked. */
-export function CheckInForm({ action, date, initial }: {
+export function CheckInForm({ action, date, part, initial }: {
   action: (f: FormData) => void | Promise<void>;
   date: string;
+  part: "morning" | "midday" | "night";
   initial: { level: ActivityLevel; activities: string[]; stepsBand: StepBand | null; miles: number | null; note: string | null } | null;
 }) {
   const [level, setLevel] = useState<ActivityLevel | null>(initial?.level ?? null);
@@ -23,6 +24,7 @@ export function CheckInForm({ action, date, initial }: {
   return (
     <form action={action} className="flex flex-col gap-4">
       <input type="hidden" name="date" value={date} />
+      <input type="hidden" name="part" value={part} />
       <fieldset className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <legend className="sr-only">How was your day?</legend>
         {ACTIVITY_LEVELS.map((l) => (
@@ -74,7 +76,7 @@ export function CheckInForm({ action, date, initial }: {
             <input name="note" maxLength={200} defaultValue={initial?.note ?? ""} placeholder="Leg day, 3 rounds of 2K, walked the Rail Trail…" className="min-h-11 rounded-xl border border-line bg-ink px-3 font-normal" />
           </label>
 
-          <button className="vybe-gradient min-h-12 rounded-full font-bold text-ink hover:brightness-110">Save my day</button>
+          <button className="vybe-gradient min-h-12 rounded-full font-bold text-ink hover:brightness-110">Save {part === "morning" ? "my morning" : part === "midday" ? "check-in" : "my night"}</button>
         </>
       )}
     </form>

@@ -9,11 +9,23 @@ import { DemoBadge } from "@/components/ui/DemoBadge";
 import { isDemoMode } from "@/config/public-env";
 import { getViewer } from "@/server/auth";
 import { getUnreadCount } from "@/server/birthday";
+import { remindCheckIn } from "@/server/health";
+import { getViewerCity } from "@/server/map";
+import { findCity } from "@/domain/map/map";
+import { log } from "@/server/log";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const viewer = await getViewer();
   // Everyone must give a birthday (13+) before using VYBR8 (email sign-ups already did).
   if (viewer && !viewer.birthdate) redirect("/welcome/birthday");
+  // Morning / midday / night check-in reminders, on the person's own time (never blocks the page).
+  if (viewer) {
+    try {
+      await remindCheckIn(viewer.id, findCity(await getViewerCity(viewer)).timezone);
+    } catch (e) {
+      log.warn("health.reminder_failed", { message: e instanceof Error ? e.message : "unknown" });
+    }
+  }
   const unread = viewer ? await getUnreadCount(viewer.id) : 0;
 
   return (

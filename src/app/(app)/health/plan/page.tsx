@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { SLOT_LABEL, addDays, dayLabel, formatClock, isYmd, ymdIn, type DayType } from "@/domain/health/health";
+import { SLOT_LABEL, addDays, dayLabel, formatClock, isYmd, type DayType } from "@/domain/health/health";
 import { findCity } from "@/domain/map/map";
 import { NUTRITION_SOURCE_LABEL, type NutritionSource } from "@/domain/nutrition/nutrition";
 import { requireViewer } from "@/server/auth";
 import { can } from "@/server/entitlements";
-import { getVybePlan } from "@/server/health";
+import { getRhythm, getVybePlan, nowFor } from "@/server/health";
 import { getViewerCity } from "@/server/map";
 import { eatMeal, removeMeal, suggestPlan } from "../actions";
 
@@ -23,7 +23,7 @@ export default async function VybePlanPage({ searchParams }: Search) {
   const viewer = await requireViewer("/health/plan");
   const sp = await searchParams;
   const city = findCity(await getViewerCity(viewer));
-  const today = ymdIn(city.timezone);
+  const today = nowFor(await getRhythm(viewer.id), city.timezone).day;
   const day = isYmd(sp.day) && sp.day >= addDays(today, -1) && sp.day <= addDays(today, 14) ? sp.day : today;
   const [allowed, plan] = await Promise.all([can("meal_planning"), getVybePlan(viewer.id, day)]);
   const suggestedType = (DAY_TYPES.some((t) => t.key === sp.type) ? sp.type : plan.dayType) as DayType;

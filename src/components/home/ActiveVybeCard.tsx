@@ -3,7 +3,9 @@ import { MoonIcon } from "@/components/health/SleepGauge";
 import { formatClock, formatDuration } from "@/domain/health/health";
 
 /** Home screen summary: last night's sleep and today's check-in. Private: only the signed-in person sees it. */
-export function ActiveVybeCard({ sleepMin, goal, wake, dayLabel }: { sleepMin: number | null; goal: number; wake: string | null; dayLabel: string | null }) {
+export function ActiveVybeCard({ sleepMin, goal, wake, dayLabel, greeting = null, due = false }: {
+  sleepMin: number | null; goal: number; wake: string | null; dayLabel: string | null; greeting?: string | null; due?: boolean;
+}) {
   const r = 34;
   const c = 2 * Math.PI * r;
   const p = Math.min(1, (sleepMin ?? 0) / goal);
@@ -18,6 +20,7 @@ export function ActiveVybeCard({ sleepMin, goal, wake, dayLabel }: { sleepMin: n
       </div>
       <div className="min-w-0 flex-1">
         <p className="flex items-center justify-between text-sm font-extrabold uppercase tracking-wider text-white/90">Active Vybe <span aria-hidden className="text-2xl leading-none">›</span></p>
+        {greeting && <p className="flex items-center gap-2 text-sm font-bold text-lavender">{greeting}{due && <span className="rounded-full bg-lavender px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-ink">Check in</span>}</p>}
         {sleepMin == null ? (
           <>
             <p className="mt-1 font-display text-2xl font-extrabold text-white">How&rsquo;d you sleep?</p>

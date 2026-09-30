@@ -1,31 +1,37 @@
 import Link from "next/link";
 import { CheckInForm } from "@/components/health/CheckInForm";
+import { FoodLogForm } from "@/components/health/FoodLogForm";
 import { RangeTabs } from "@/components/health/RangeTabs";
 import { SleepBars } from "@/components/health/SleepBars";
 import { MoonIcon, SleepGauge } from "@/components/health/SleepGauge";
 import { Button } from "@/components/ui/Button";
 import {
-  ACTIVITY_LEVELS, ACTIVITY_OPTIONS, QUALITY_LABEL, RECOMMENDATIONS, STEP_BANDS, activityScore, addDays, dayAdvice, dayLabel, isYmd, ymdIn, type Range,
+  ACTIVITY_LEVELS, ACTIVITY_OPTIONS, DAY_PARTS, FOOD_SLOTS, QUALITY_LABEL, RECOMMENDATIONS, STEP_BANDS, activityScore, addDays, blockAt, bodyHour, dayAdvice,
+  dayLabel, formatClock, hhmm, isYmd, slotForHour, type DayPart, type Range,
 } from "@/domain/health/health";
 import { findCity } from "@/domain/map/map";
 import { requireViewer } from "@/server/auth";
 import { can } from "@/server/entitlements";
-import { getActiveVybe } from "@/server/health";
+import { getActiveVybe, getRhythm, nowFor } from "@/server/health";
 import { getViewerCity } from "@/server/map";
-import { checkIn, logSleep, setSleepGoal } from "./actions";
+import { checkIn, logFood, logSleep, removeFood } from "./actions";
 
 export const metadata = { title: "Active Vybe" };
 
 const TONE: Record<string, string> = { coral: "bg-coral/20 text-coral", orange: "bg-orange/20 text-orange", sky: "bg-sky/20 text-sky", mint: "bg-mint/20 text-mint", lavender: "bg-lavender/20 text-lavender" };
+const SAVED: Record<string, string> = { sleep: "Sleep saved.", day: "Checked in. Nice.", food: "Food added.", drink: "Drink added.", water: "Water added. Stay hydrated." };
+const KIND_DOT: Record<string, string> = { food: "bg-orange", drink: "bg-coral", water: "bg-sky" };
 const input = "min-h-11 w-full rounded-xl border border-line bg-ink px-3 text-sm tabular-nums placeholder:text-faint focus:border-lavender";
 
-type Search = { searchParams: Promise<{ date?: string; range?: string; e?: string; saved?: string }> };
+type Search = { searchParams: Promise<{ date?: string; range?: string; part?: string; e?: string; saved?: string }> };
 
 export default async function HealthPage({ searchParams }: Search) {
   const viewer = await requireViewer("/health");
   const sp = await searchParams;
   const city = findCity(await getViewerCity(viewer));
-  const today = ymdIn(city.timezone);
+  const rhythm = await getRhythm(viewer.id);
+  const now = nowFor(rhythm, city.timezone);   // the person's own day: night-shift workers included
+  const today = now.day;
   const date = isYmd(sp.date) && sp.date <= today ? sp.date : today;
   const range: Range = sp.range === "week" || sp.range === "month" ? sp.range : "day";
   const [av, canHistory] = await Promise.all([getActiveVybe(viewer.id, date, city.timezone), can("expanded_active_vybe")]);
@@ -39,6 +45,17 @@ export default async function HealthPage({ searchParams }: Search) {
   const n = av.nutrition;
   const calTarget = n.target?.calories ?? null;
   const isToday = date === today;
+  const nowSlot = isToday ? slotForHour(bodyHour(now.clock.minutes, rhythm.wake)) : null;
+  const part: DayPart = DAY_PARTS.some((x) => x.key === sp.part) ? (sp.part as DayPart) : isToday ? now.part : "night";
+  const partInfo = DAY_PARTS.find((x) => x.key === part)!;
+  const greeting = DAY_PARTS.find((x) => x.key === now.part)!.greeting;
+  const scheduledNow = isToday && part === now.part ? blockAt(rhythm.blocks, now.clock.weekday, now.clock.minutes) : null;
+  const partCheckIn = av.checkins[part];
+  const initial = partCheckIn ?? (scheduledNow ? { level: scheduledNow.level, activities: [], stepsBand: null, miles: null, note: null } : null);
+  const levelLabel = (k: string | undefined) => ACTIVITY_LEVELS.find((l) => l.key === k)?.label;
+  const partHref = (p: DayPart) => `/health?${new URLSearchParams({ date, part: p })}#day-h`;
+  const bySlot = FOOD_SLOTS.map((s) => ({ ...s, items: av.journal.filter((j) => j.slot === s.key) })).filter((g) => g.items.length);
+  const unslotted = av.journal.filter((j) => !j.slot);
   const href = (p: { date?: string; range?: string }) => `/health?${new URLSearchParams({ date: p.date ?? date, range: p.range ?? range })}`;
 
   return (
@@ -47,17 +64,18 @@ export default async function HealthPage({ searchParams }: Search) {
         <div className="flex items-center gap-3">
           <span className="grid size-12 place-items-center rounded-full bg-lavender/20 text-lavender"><MoonIcon className="size-6" /></span>
           <div>
-            <h1 className="font-display text-3xl font-extrabold leading-tight">Active Vybe</h1>
-            <p className="text-sm text-muted">Sleep and your day, logged by you · private to you</p>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-lavender">Active Vybe</p>
+            <h1 className="font-display text-2xl font-extrabold leading-tight sm:text-3xl">{greeting}</h1>
+            <p className="text-sm text-muted">On your time · {formatClock(hhmm(now.clock.minutes))} · private to you</p>
           </div>
         </div>
-        <a href="#settings" aria-label="Sleep goal settings" className="grid size-11 place-items-center rounded-full border border-line text-muted hover:text-text">
+        <Link href="/health/schedule" aria-label="My schedule and reminders" className="grid size-11 place-items-center rounded-full border border-line text-muted hover:text-text">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-5" aria-hidden><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>
-        </a>
+        </Link>
       </header>
 
       {sp.e && <p role="alert" className="rounded-xl border border-danger/50 p-3 text-sm text-danger">{sp.e}</p>}
-      {sp.saved && <p role="status" className="rounded-xl border border-lavender/40 bg-lavender/10 p-3 text-sm">{sp.saved === "sleep" ? "Sleep saved." : "Day saved. Nice."}</p>}
+      {sp.saved && <p role="status" className="rounded-xl border border-lavender/40 bg-lavender/10 p-3 text-sm">{SAVED[sp.saved] ?? "Saved."}</p>}
 
       <RangeTabs active={range} hrefFor={(r) => href({ range: r })} />
 
@@ -81,8 +99,8 @@ export default async function HealthPage({ searchParams }: Search) {
               <form action={logSleep} className="mt-4 flex flex-col gap-3">
                 <input type="hidden" name="date" value={date} />
                 <div className="grid grid-cols-2 gap-3">
-                  <label className="flex flex-col gap-1 text-sm font-semibold">Went to bed<input type="time" name="bed" required defaultValue={av.sleep?.bedTime ?? "23:00"} className={input} /></label>
-                  <label className="flex flex-col gap-1 text-sm font-semibold">Woke up<input type="time" name="wake" required defaultValue={av.sleep?.wakeTime ?? "07:00"} className={input} /></label>
+                  <label className="flex flex-col gap-1 text-sm font-semibold">Went to bed<input type="time" name="bed" required defaultValue={av.sleep?.bedTime ?? rhythm.bed} className={input} /></label>
+                  <label className="flex flex-col gap-1 text-sm font-semibold">Woke up<input type="time" name="wake" required defaultValue={av.sleep?.wakeTime ?? rhythm.wake} className={input} /></label>
                 </div>
                 <fieldset className="flex flex-col gap-2">
                   <legend className="mb-1 text-sm font-semibold">How rested do you feel?</legend>
@@ -99,24 +117,112 @@ export default async function HealthPage({ searchParams }: Search) {
             </details>
           </section>
 
-          {/* How was your day */}
-          <section aria-labelledby="day-h" className="flex flex-col gap-4 rounded-[var(--radius-card)] border border-line bg-surface p-5">
+          {/* Check-ins: morning, midday, night */}
+          <section aria-labelledby="day-h" className="flex scroll-mt-4 flex-col gap-4 rounded-[var(--radius-card)] border border-line bg-surface p-5">
             <div className="flex items-baseline justify-between gap-3">
-              <h2 id="day-h" className="font-display text-xl font-extrabold">{isToday ? "How's your day going?" : "How was this day?"}</h2>
-              {levelInfo && <span className={`rounded-full px-3 py-1 text-xs font-bold ${TONE[levelInfo.tone]}`}>{levelInfo.label}</span>}
+              <h2 id="day-h" className="font-display text-xl font-extrabold">{isToday ? (part === now.part ? partInfo.greeting : `${partInfo.label} check-in`) : `${partInfo.label} check-in`}</h2>
+              {levelInfo && <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${TONE[levelInfo.tone]}`}>Day: {levelInfo.label}</span>}
             </div>
-            {ci && (
+
+            <nav aria-label="Part of the day" className="grid grid-cols-3 gap-2">
+              {DAY_PARTS.map((x) => {
+                const c = av.checkins[x.key];
+                return (
+                  <Link key={x.key} href={partHref(x.key)} aria-current={x.key === part ? "true" : undefined}
+                    className={`flex flex-col items-center rounded-2xl border px-2 py-2 text-center ${x.key === part ? "border-lavender bg-lavender/15" : "border-line hover:bg-surface-2"}`}>
+                    <span className="text-sm font-bold">{x.label}{isToday && x.key === now.part ? <span className="text-lavender"> · now</span> : null}</span>
+                    <span className={`text-xs ${c ? "text-mint" : "text-faint"}`}>{c ? `✓ ${levelLabel(c.level)}` : "Not yet"}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+
+            {av.scheduled.length > 0 ? (
+              <div className="rounded-2xl border border-line bg-ink p-3">
+                <p className="text-xs font-bold uppercase tracking-wider text-faint">On your schedule {isToday ? "today" : "this day"} · counted automatically</p>
+                <ul className="mt-1 flex flex-col gap-1">
+                  {av.scheduled.map((b) => (
+                    <li key={b.id} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="font-semibold">{b.label} <span className="font-normal text-muted">· {formatClock(b.start)}–{formatClock(b.end)}</span></span>
+                      <span className="shrink-0 text-xs text-muted">{levelLabel(b.level)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <Link href="/health/schedule" className="text-sm font-semibold text-sky hover:underline">Have a set schedule, like work 9–5? Add it once and it counts every day →</Link>
+            )}
+
+            {partCheckIn && (
               <p className="text-sm text-muted">
                 {[
-                  ci.activities.map((a) => ACTIVITY_OPTIONS.find((o) => o.key === a)?.label).filter(Boolean).join(", "),
-                  ci.miles != null ? `${ci.miles} mi` : ci.stepsBand ? STEP_BANDS.find((b) => b.key === ci.stepsBand)?.label : null,
-                  ci.note,
+                  partCheckIn.activities.map((a) => ACTIVITY_OPTIONS.find((o) => o.key === a)?.label).filter(Boolean).join(", "),
+                  partCheckIn.miles != null ? `${partCheckIn.miles} mi` : partCheckIn.stepsBand ? STEP_BANDS.find((b) => b.key === partCheckIn.stepsBand)?.label : null,
+                  partCheckIn.note,
                 ].filter(Boolean).join(" · ") || "Checked in."}
               </p>
             )}
-            <details className="group" open={!ci}>
-              <summary className="cursor-pointer list-none text-sm font-bold text-sky">{ci ? "Change check-in" : "Pick one to check in"}</summary>
-              <div className="mt-3"><CheckInForm action={checkIn} date={date} initial={ci} /></div>
+            <details className="group" open={!partCheckIn}>
+              <summary className="cursor-pointer list-none text-sm font-bold text-sky">
+                {partCheckIn ? `Change ${partInfo.label.toLowerCase()} check-in` : scheduledNow ? `You're at ${scheduledNow.label} on your schedule. Anything else going on?` : partInfo.prompt}
+              </summary>
+              <div className="mt-3"><CheckInForm key={part} action={checkIn} date={date} part={part} initial={initial} /></div>
+            </details>
+          </section>
+
+          {/* What you ate and drank */}
+          <section aria-labelledby="ate-h" className="flex flex-col gap-4 rounded-[var(--radius-card)] border border-line bg-surface p-5">
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 id="ate-h" className="font-display text-xl font-extrabold">{isToday ? "Have you already ate?" : "What you ate and drank"}</h2>
+              <span className="shrink-0 rounded-full bg-sky/15 px-3 py-1 text-xs font-bold text-sky tabular-nums">{av.waterOz} oz water</span>
+            </div>
+
+            {isToday && nowSlot && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted">Quick water:</span>
+                {[8, 16].map((oz) => (
+                  <form key={oz} action={logFood}>
+                    <input type="hidden" name="date" value={date} /><input type="hidden" name="kind" value="water" />
+                    <input type="hidden" name="ounces" value={oz} /><input type="hidden" name="slot" value={nowSlot} />
+                    <button className="min-h-10 rounded-full border border-sky/50 px-4 text-sm font-bold text-sky hover:bg-sky/10">+{oz} oz</button>
+                  </form>
+                ))}
+              </div>
+            )}
+
+            {av.journal.length > 0 ? (
+              <ol className="flex flex-col gap-3">
+                {[...bySlot, ...(unslotted.length ? [{ key: "other", label: "Other", items: unslotted }] : [])].map((g) => (
+                  <li key={g.key}>
+                    <p className="text-xs font-bold uppercase tracking-wider text-faint">{g.label}</p>
+                    <ul className="mt-1 flex flex-col divide-y divide-line">
+                      {g.items.map((j) => (
+                        <li key={j.id} className="flex items-center gap-3 py-2">
+                          <span aria-hidden className={`size-2 shrink-0 rounded-full ${KIND_DOT[j.kind] ?? "bg-orange"}`} />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold">{j.name}</p>
+                            <p className="text-xs text-muted tabular-nums">
+                              {[j.amount, j.ounces != null ? `${j.ounces} oz` : null, j.kind !== "water" && j.calories != null ? `${j.calories.toLocaleString()} cal` : null, j.fromMenu ? "from a VYBR8 menu" : null]
+                                .filter(Boolean).join(" · ") || (j.kind === "drink" ? "Drink" : "Food")}
+                            </p>
+                          </div>
+                          <form action={removeFood}>
+                            <input type="hidden" name="id" value={j.id} /><input type="hidden" name="date" value={date} />
+                            <button aria-label={`Remove ${j.name}`} className="grid size-9 place-items-center rounded-full text-lg text-faint hover:bg-surface-2 hover:text-text">×</button>
+                          </form>
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="text-sm text-muted">Nothing logged {isToday ? "yet today" : "for this day"}. Add water, a drink or food and when you had it.</p>
+            )}
+
+            <details className="group rounded-2xl border border-line bg-ink p-4" open={av.journal.length === 0}>
+              <summary className="cursor-pointer list-none text-center font-bold text-mint">+ Add food or a drink</summary>
+              <div className="mt-4"><FoodLogForm action={logFood} date={date} slot={nowSlot} /></div>
             </details>
           </section>
 
@@ -157,7 +263,7 @@ export default async function HealthPage({ searchParams }: Search) {
                 </div>
               ))}
             </dl>
-            {!calTarget && <p className="text-xs text-faint">Log meals from a dish page or your Vybe Plan. Calorie and macro targets are part of VYBR8+.</p>}
+            {!calTarget && <p className="text-xs text-faint">Add what you ate above, or log from a dish page or your Vybe Plan. Calorie and macro targets are part of VYBR8+.</p>}
           </section>
         </>
       ) : canHistory ? (
@@ -170,15 +276,15 @@ export default async function HealthPage({ searchParams }: Search) {
         </section>
       )}
 
-      <section id="settings" aria-labelledby="set-h" className="rounded-[var(--radius-card)] border border-line bg-surface p-5">
-        <h2 id="set-h" className="font-bold">Sleep goal</h2>
-        <form action={setSleepGoal} className="mt-3 flex items-center gap-2">
-          <label className="sr-only" htmlFor="hours">Hours of sleep per night</label>
-          <input id="hours" name="hours" type="number" min={4} max={12} step={0.5} defaultValue={av.sleepGoal / 60} className={`${input} w-24`} />
-          <span className="text-sm text-muted">hours a night</span>
-          <Button type="submit" variant="ghost" className="ml-auto">Save</Button>
-        </form>
-        <p className="mt-2 text-xs text-faint">Your sleep and activity are private: never shared with friends, businesses or the VYBR8 Team. VYBR8 gives wellness information, not medical advice.</p>
+      <section id="settings" aria-labelledby="set-h" className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-line bg-surface p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 id="set-h" className="font-bold">My schedule &amp; reminders</h2>
+            <p className="text-sm text-muted tabular-nums">Up at {formatClock(rhythm.wake)} · bed at {formatClock(rhythm.bed)} · {rhythm.blocks.length} {rhythm.blocks.length === 1 ? "block" : "blocks"} · {rhythm.reminders.length ? `${rhythm.reminders.length} reminders` : "reminders off"}</p>
+          </div>
+          <Link href="/health/schedule" className="inline-flex min-h-11 shrink-0 items-center rounded-full border border-line px-4 text-sm font-bold hover:bg-surface-2">Edit</Link>
+        </div>
+        <p className="text-xs text-faint">Your sleep, activity and what you eat and drink are private: never shared with friends, businesses or the VYBR8 Team. VYBR8 gives wellness information, not medical advice.</p>
       </section>
     </div>
   );
