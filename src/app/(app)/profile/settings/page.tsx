@@ -3,7 +3,7 @@ import { PhotoUpload } from "@/components/profile/PhotoUpload";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/server";
 import { requireViewer } from "@/server/auth";
-import { saveSettings } from "./actions";
+import { changeUsername, saveSettings } from "./actions";
 
 export const metadata = { title: "Settings" };
 
@@ -22,12 +22,12 @@ const OPTIONS = [
   { value: "private", label: "Only me" },
 ];
 
-export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; welcome?: string }> }) {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; welcome?: string; handle?: string; handle_error?: string }> }) {
   const viewer = await requireViewer("/profile/settings");
-  const { saved, error, welcome } = await searchParams;
+  const { saved, error, welcome, handle, handle_error } = await searchParams;
   const supabase = await createClient();
   const [{ data: profile }, { data: privacy }, { data: settings }] = await Promise.all([
-    supabase.from("profiles").select("username, display_name, bio, home_city, avatar_url").eq("id", viewer.id).single(),
+    supabase.from("profiles").select("username, display_name, bio, home_city, avatar_url, username_changed_at").eq("id", viewer.id).single(),
     supabase.from("privacy_settings").select("*").eq("user_id", viewer.id).single(),
     supabase.from("user_settings").select("notification_prefs").eq("user_id", viewer.id).single(),
   ]);
@@ -37,11 +37,31 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     : null;
 
   return (
-    <form action={saveSettings} className="mx-auto flex max-w-2xl flex-col gap-8">
+    <div className="mx-auto flex max-w-2xl flex-col gap-8">
       <header>
         <h1 className="text-3xl font-bold">{welcome ? "Welcome to VYBR8" : "Profile & privacy"}</h1>
         <p className="mt-1 text-muted">@{profile?.username}</p>
       </header>
+
+      <form action={changeUsername} className="flex flex-col gap-2 rounded-2xl border border-line bg-surface p-4">
+        <label htmlFor="username" className="text-sm font-semibold">Your @</label>
+        <div className="flex flex-wrap gap-2">
+          <span className="flex min-h-11 flex-1 items-center rounded-xl border border-line bg-ink px-3 focus-within:border-mint">
+            <span aria-hidden className="text-muted">@</span>
+            <input id="username" name="username" required minLength={3} maxLength={30} pattern="@?[A-Za-z0-9_.]{3,30}" autoCapitalize="none" autoComplete="off" spellCheck={false}
+              defaultValue={(profile?.username as string) ?? ""} className="min-w-0 flex-1 bg-transparent px-1 outline-none" />
+          </span>
+          <Button type="submit" variant="ghost">Change @</Button>
+        </div>
+        <p aria-live="polite" className="text-xs">
+          {handle ? <span className="text-mint">Done! You&rsquo;re now @{handle}. Old links to your profile still work.</span>
+            : handle_error ? <span className="text-danger">{handle_error}</span>
+            : <span className="text-faint">3 to 30 letters, numbers, _ or periods. You can change it once every 30 days, and old links to your profile keep working.
+                {profile?.username_changed_at ? ` Last changed ${new Date(profile.username_changed_at as string).toLocaleDateString("en-US", { month: "long", day: "numeric" })}.` : ""}</span>}
+        </p>
+      </form>
+
+    <form action={saveSettings} className="flex flex-col gap-8">
 
       <div aria-live="polite">
         {saved && <p className="rounded-xl border border-mint/40 px-4 py-3 text-sm text-mint">Saved.</p>}
@@ -109,5 +129,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       <Button type="submit" className="self-start">Save changes</Button>
       <p className="text-sm text-muted">Need a hand? <Link href="/help" className="font-semibold text-sky hover:underline">Help &amp; Support</Link></p>
     </form>
+    </div>
   );
 }

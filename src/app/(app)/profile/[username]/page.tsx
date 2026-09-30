@@ -2,7 +2,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import Link from "next/link";
 import { TasteForm } from "@/components/groups/TasteForm";
 import { getMyTaste } from "@/server/groups";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { CreatorBadge, TeamBadge } from "@/components/posts/Badges";
 import { PostButton } from "@/components/posts/PostButton";
 import { PostGrid } from "@/components/posts/PostGrid";
@@ -35,7 +35,12 @@ export default async function ProfilePage({ params }: Params) {
     .select("id, username, display_name, bio, home_city, home_region, is_demo, avatar_url")
     .eq("username", username)
     .maybeSingle();
-  if (!profile) notFound();
+  if (!profile) {
+    // They may have changed their @: forward old links.
+    const { data: moved } = await supabase.rpc("username_redirect", { p_old: username });
+    if (typeof moved === "string" && moved) redirect(`/profile/${moved}`);
+    notFound();
+  }
 
   const id = profile.id as string;
   const isMe = viewer?.id === id;
