@@ -1,0 +1,6 @@
+VYBR8 - app icon v3 (GITHUB)
+
+1. Unzip.
+2. GitHub repo main page -> Add file -> Upload files.
+3. Drag in BOTH folders: public and src. Commit changes.
+4. Phone: delete the old VYBR8 icon, open vybr8.live, Add to Home Screen again.
