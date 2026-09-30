@@ -68,6 +68,12 @@ export default async function TeamPage() {
         </p>
       )}
 
+      {!isTeam && (
+        <p className="text-sm text-muted">
+          Want to help run VYBR8 in your city? <Link href="/help?topic=team#contact" className="font-semibold text-sky hover:underline">Ask to join the team</Link>.
+        </p>
+      )}
+
       {isTeam && (
         <nav aria-label="Team tools" className="flex flex-wrap gap-3">
           <Link href="/team/creators" className="vybe-ring rounded-full px-5 py-2.5 text-sm font-bold">Creator verification →</Link>

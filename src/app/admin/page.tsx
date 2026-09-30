@@ -68,6 +68,7 @@ export default async function AdminPage() {
         <h1 className="text-3xl font-bold">Admin</h1>
         <div className="flex flex-wrap gap-2">
           <Link href="/admin/import" className="inline-flex min-h-11 items-center rounded-full border border-mint/60 px-5 text-sm font-bold text-mint hover:bg-mint/10">Import real places</Link>
+          <Link href="/admin/team" className="inline-flex min-h-11 items-center rounded-full border border-lavender/60 px-5 text-sm font-bold text-lavender hover:bg-lavender/10">VYBR8 Team</Link>
           <Link href="/admin/support" className="inline-flex min-h-11 items-center rounded-full border border-sky/60 px-5 text-sm font-bold text-sky hover:bg-sky/10">
             Support inbox{openTickets ? ` (${openTickets} open)` : ""}
           </Link>

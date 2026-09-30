@@ -42,7 +42,7 @@ export default async function ProfilePage({ params }: Params) {
 
   const [creator, team, followers, following, iFollow, myApplication, page, idCheck] = await Promise.all([
     supabase.from("creator_profiles").select("creator_type, status").eq("user_id", id).maybeSingle(),
-    supabase.from("team_members").select("title, bio").eq("user_id", id).maybeSingle(),
+    supabase.from("team_members").select("title, bio, is_founder").eq("user_id", id).maybeSingle(),
     supabase.from("follows").select("*", { count: "exact", head: true }).eq("followee_id", id),
     supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", id),
     viewer && !isMe ? supabase.from("follows").select("followee_id").eq("follower_id", viewer.id).eq("followee_id", id).maybeSingle() : Promise.resolve({ data: null }),
@@ -121,7 +121,7 @@ export default async function ProfilePage({ params }: Params) {
           </div>
           <div className="flex flex-wrap gap-2">
             {(viewer!.platformRoles.includes("admin")
-              ? [["/admin", "Admin"], ["/admin/import", "Import real places"], ["/admin/support", "Support inbox"], ["/team/moderation", "Moderation"], ["/team/creators", "Creator queue"]]
+              ? [["/admin", "Admin"], ["/admin/import", "Import real places"], ...(team.data?.is_founder ? [["/admin/team", "Team manager"]] : []), ["/admin/support", "Support inbox"], ["/team/moderation", "Moderation"], ["/team/creators", "Creator queue"]]
               : [["/admin/support", "Support inbox"], ["/team/moderation", "Moderation"], ["/team/creators", "Creator queue"]]
             ).map(([href, label], i) => (
               <Link key={href} href={href!} className={`inline-flex min-h-11 items-center rounded-full px-5 text-sm font-bold ${i === 0 ? "bg-mint text-ink" : "border border-line hover:bg-surface-2"}`}>{label}</Link>

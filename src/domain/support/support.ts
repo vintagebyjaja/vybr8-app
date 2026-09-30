@@ -10,6 +10,7 @@ export const SUPPORT_TOPICS = [
   { key: "max", label: "VYBR8+ / VYBR8 MAX" },
   { key: "bug", label: "Something's broken" },
   { key: "idea", label: "Idea or feedback" },
+  { key: "team", label: "I want to join the VYBR8 Team" },
   { key: "safety", label: "Report someone or something unsafe" },
   { key: "privacy", label: "Privacy or deleting my data" },
   { key: "other", label: "Something else" },
