@@ -4,8 +4,8 @@ import { CITIES, findCity, isOpenAt, project } from "../../src/domain/map/map.ts
 import { cityDay, is21OnDay, cityTimeToDate, spotsLeft, validateLinkupDraft, type LinkupDraft } from "../../src/domain/linkups/linkups.ts";
 
 describe("cities", () => {
-  it("launches with the 7 cities", () => {
-    assert.deepEqual(CITIES.map((c) => c.slug), ["charlotte", "atlanta", "nashville", "houston", "phoenix", "dc", "brooklyn"]);
+  it("launches with the 8 cities", () => {
+    assert.deepEqual(CITIES.map((c) => c.slug), ["charlotte", "atlanta", "nashville", "houston", "phoenix", "dc", "brooklyn", "miami"]);
   });
   it("falls back to Charlotte for unknown cities", () => assert.equal(findCity("paris").slug, "charlotte"));
 });

@@ -1,5 +1,5 @@
 /**
- * Illustrated skylines for the 7 launch cities (flat silhouettes, drawn in code, no photos or brands).
+ * Illustrated skylines for the launch cities (flat silhouettes, drawn in code, no photos or brands).
  * Canvas is 400 × 200; ground is y = 200. Pure data, rendered by <CitySkyline>.
  */
 
@@ -87,6 +87,18 @@ export const SKYLINES: Record<string, { back: Shape[]; front: Shape[] }> = {
       { t: "path", d: "M234 200 V92 H270 V200 M242 200 V110 Q252 96 262 110 V200" },
       { t: "path", d: "M0 150 Q70 150 148 94 Q200 168 252 94 Q330 150 400 150", stroke: 2 },
       { t: "path", d: "M0 160 Q70 160 148 104 Q200 168 252 104 Q330 160 400 160", stroke: 1.5 },
+    ],
+  },
+  // Bayfront towers over the water, a palm on each side.
+  miami: {
+    back: [tower(20, 128, 24), tower(48, 112, 22), tower(300, 116, 26), tower(330, 104, 22), tower(356, 130, 28)],
+    front: [
+      tower(76, 96, 30), tower(110, 120, 24), { t: "rect", x: 138, y: 70, w: 26, lit: true },
+      { t: "rect", x: 170, y: 58, w: 28, lit: true }, { t: "rect", x: 183, y: 40, w: 2, h: 18 },
+      tower(204, 84, 24), { t: "path", d: "M234 200 V104 Q246 96 258 104 V200" }, tower(262, 120, 30),
+      { t: "rect", x: 0, y: 178, w: 400, h: 3 },
+      { t: "path", d: "M30 200 Q32 170 26 146 M26 146 Q12 142 6 150 M26 146 Q40 138 48 146 M26 146 Q22 132 12 130 M26 146 Q32 132 42 132", stroke: 4 },
+      { t: "path", d: "M378 200 Q376 172 382 150 M382 150 Q368 146 362 154 M382 150 Q396 142 400 150 M382 150 Q378 136 368 134", stroke: 4 },
     ],
   },
 };

@@ -14,6 +14,7 @@ export const CITIES: readonly City[] = [
   { slug: "phoenix", name: "Phoenix", region: "AZ", timezone: "America/Phoenix", center: { lat: 33.4484, lng: -112.074 }, bounds: { north: 33.65, south: 33.3, east: -111.9, west: -112.3 } },
   { slug: "dc", name: "Washington, DC", region: "DC", timezone: "America/New_York", center: { lat: 38.9072, lng: -77.0369 }, bounds: { north: 38.995, south: 38.8, east: -76.91, west: -77.12 } },
   { slug: "brooklyn", name: "Brooklyn", region: "NY", timezone: "America/New_York", center: { lat: 40.6782, lng: -73.9442 }, bounds: { north: 40.74, south: 40.57, east: -73.85, west: -74.04 } },
+  { slug: "miami", name: "Miami", region: "FL", timezone: "America/New_York", center: { lat: 25.7617, lng: -80.1918 }, bounds: { north: 25.87, south: 25.7, east: -80.12, west: -80.32 } },
 ];
 
 export const DEFAULT_CITY = "charlotte";
