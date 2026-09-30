@@ -43,3 +43,29 @@ export async function removeTeamMember(form: FormData) {
   revalidatePath("/team");
   back({ removed: "1" });
 }
+
+/** Answer an "I want to join the VYBR8 Team" request from Help & Support. */
+export async function answerJoinRequest(form: FormData) {
+  await requireAdmin();
+  const p = z.object({
+    ticket: z.uuid(),
+    decision: z.enum(["accept", "decline"]),
+    role: z.enum(["moderator", "admin"]).default("moderator"),
+    title: z.string().trim().max(60).optional(),
+    username: z.string().max(40).optional(),
+  }).safeParse(Object.fromEntries(form));
+  if (!p.success) back({ e: "Pick a role and a title, then try again." });
+  const accept = p.data!.decision === "accept";
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("team_answer_request", {
+    p_ticket: p.data!.ticket, p_accept: accept, p_role: p.data!.role, p_title: p.data!.title || null,
+  });
+  if (error) {
+    log.warn("team.request_failed", { code: error.code });
+    back({ e: friendly(error.message) });
+  }
+  revalidatePath("/admin/team");
+  revalidatePath("/team");
+  revalidatePath("/admin/support");
+  back(accept && p.data!.username ? { saved: p.data!.username } : { declined: "1" });
+}

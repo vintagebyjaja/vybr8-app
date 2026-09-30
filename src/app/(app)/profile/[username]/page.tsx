@@ -12,6 +12,7 @@ import { DemoBadge } from "@/components/ui/DemoBadge";
 import type { CreatorType } from "@/domain/posts/posts";
 import { createClient } from "@/lib/supabase/server";
 import { getViewer } from "@/server/auth";
+import { getConnections } from "@/server/connections";
 import { getFeed } from "@/server/posts";
 import { getPendingApplications } from "@/server/team";
 import { follow, unfollow } from "../actions";
@@ -40,7 +41,7 @@ export default async function ProfilePage({ params }: Params) {
   const isMe = viewer?.id === id;
   const isStaff = !!viewer?.platformRoles.length;
 
-  const [creator, team, followers, following, iFollow, myApplication, page, idCheck] = await Promise.all([
+  const [creator, team, followers, following, iFollow, myApplication, page, idCheck, followsMe, mutuals] = await Promise.all([
     supabase.from("creator_profiles").select("creator_type, status").eq("user_id", id).maybeSingle(),
     supabase.from("team_members").select("title, bio, is_founder").eq("user_id", id).maybeSingle(),
     supabase.from("follows").select("*", { count: "exact", head: true }).eq("followee_id", id),
@@ -49,6 +50,8 @@ export default async function ProfilePage({ params }: Params) {
     isMe ? supabase.from("creator_applications").select("status").eq("user_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle() : Promise.resolve({ data: null }),
     getFeed({ kind: "author", authorId: id }),
     supabase.rpc("identity_verified", { p_users: [id] }),
+    viewer && !isMe ? supabase.from("follows").select("follower_id").eq("follower_id", id).eq("followee_id", viewer.id).maybeSingle() : Promise.resolve({ data: null }),
+    viewer && !isMe ? getConnections(id, "mutual", 0, 3) : Promise.resolve({ total: 0, people: [] }),
   ]);
   const idVerified = ((idCheck.data ?? []) as unknown[]).length > 0;
 
@@ -57,6 +60,8 @@ export default async function ProfilePage({ params }: Params) {
   const name = (profile.display_name as string | null) ?? (profile.username as string);
   const showTeamTools = isMe && isStaff;
   const pending = showTeamTools ? await getPendingApplications(3) : null;
+  const joinRequests = showTeamTools && team.data?.is_founder ? ((await supabase.rpc("team_join_requests")).data ?? []).length : 0;
+  const connections = `/profile/${profile.username as string}/connections`;
   const [taste, myLists] = isMe && viewer
     ? await Promise.all([
         getMyTaste(viewer),
@@ -86,9 +91,19 @@ export default async function ProfilePage({ params }: Params) {
           </p>
           <dl className="flex gap-5 text-sm">
             <div><dt className="sr-only">Posts</dt><dd><b className="tabular-nums">{page.posts.length}{page.nextCursor ? "+" : ""}</b> <span className="text-muted">posts</span></dd></div>
-            <div><dt className="sr-only">Followers</dt><dd><b className="tabular-nums">{followers.count ?? 0}</b> <span className="text-muted">followers</span></dd></div>
-            <div><dt className="sr-only">Following</dt><dd><b className="tabular-nums">{following.count ?? 0}</b> <span className="text-muted">following</span></dd></div>
+            <div><dt className="sr-only">Followers</dt><dd><Link href={`${connections}?tab=followers`} className="hover:underline"><b className="tabular-nums">{followers.count ?? 0}</b> <span className="text-muted">followers</span></Link></dd></div>
+            <div><dt className="sr-only">Following</dt><dd><Link href={`${connections}?tab=following`} className="hover:underline"><b className="tabular-nums">{following.count ?? 0}</b> <span className="text-muted">following</span></Link></dd></div>
+            {followsMe.data && <div><dt className="sr-only">Relationship</dt><dd className="rounded-full bg-surface-2 px-2 py-0.5 text-xs font-semibold">Follows you</dd></div>}
           </dl>
+          {mutuals.total > 0 && (
+            <Link href={`${connections}?tab=mutual`} className="flex items-center gap-2 text-xs text-muted hover:text-text">
+              <span className="flex -space-x-2">{mutuals.people.map((m) => <Avatar key={m.id} path={m.avatarPath} name={m.displayName ?? m.username} size="sm" ring={false} />)}</span>
+              <span>
+                Followed by {mutuals.people.slice(0, 2).map((m) => `@${m.username}`).join(", ")}
+                {mutuals.total > 2 ? ` and ${mutuals.total - 2} more you follow` : ""}
+              </span>
+            </Link>
+          )}
         </div>
       </header>
 
@@ -121,7 +136,7 @@ export default async function ProfilePage({ params }: Params) {
           </div>
           <div className="flex flex-wrap gap-2">
             {(viewer!.platformRoles.includes("admin")
-              ? [["/admin", "Admin"], ["/admin/import", "Import real places"], ...(team.data?.is_founder ? [["/admin/team", "Team manager"]] : []), ["/admin/support", "Support inbox"], ["/team/moderation", "Moderation"], ["/team/creators", "Creator queue"]]
+              ? [["/admin", "Admin"], ["/admin/import", "Import real places"], ...(team.data?.is_founder ? [["/admin/team", joinRequests ? `Team manager · ${joinRequests} new request${joinRequests === 1 ? "" : "s"}` : "Team manager"]] : []), ["/admin/support", "Support inbox"], ["/team/moderation", "Moderation"], ["/team/creators", "Creator queue"]]
               : [["/admin/support", "Support inbox"], ["/team/moderation", "Moderation"], ["/team/creators", "Creator queue"]]
             ).map(([href, label], i) => (
               <Link key={href} href={href!} className={`inline-flex min-h-11 items-center rounded-full px-5 text-sm font-bold ${i === 0 ? "bg-mint text-ink" : "border border-line hover:bg-surface-2"}`}>{label}</Link>
