@@ -7,7 +7,7 @@ export type Entitlement =
   // consumer
   | "ad_free" | "advanced_vybe_match" | "advanced_filters" | "advanced_nutrition" | "custom_nutrition_targets"
   | "advanced_group_vybe" | "deep_dive" | "goal_impact" | "make_it_work" | "better_swap" | "eating_it_anyway"
-  | "meal_planning" | "weekly_reports"
+  | "meal_planning" | "weekly_reports" | "expanded_active_vybe"
   // business
   | "business_advanced_analytics" | "item_performance" | "rating_trends" | "ranking_movement" | "campaign_tools" | "promotion_management"
   | (string & {});
