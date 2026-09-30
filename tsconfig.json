@@ -22,5 +22,5 @@
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],
-  "exclude": ["node_modules", "**/* (*).ts", "**/* (*).tsx", "**/* copy.ts", "**/* copy.tsx"]
+  "exclude": ["node_modules", "tests", "supabase", "scripts", "**/*.test.ts", "**/* (*).ts", "**/* (*).tsx", "**/* copy.ts", "**/* copy.tsx"]
 }
