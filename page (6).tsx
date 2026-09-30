@@ -1,161 +1,152 @@
-import Image from "next/image";
+import { Avatar } from "@/components/ui/Avatar";
 import Link from "next/link";
-import { VybeWave } from "@/components/brand/VybeWave";
-import { VybeMap } from "@/components/map/VybeMap";
-import { VybeStatus } from "@/components/map/VybeStatus";
-import { CITIES } from "@/domain/map/map";
-import { getMapData, getViewerCity } from "@/server/map";
-import { FeedTabs } from "@/components/posts/FeedTabs";
+import { notFound } from "next/navigation";
+import { CreatorBadge, TeamBadge } from "@/components/posts/Badges";
 import { PostButton } from "@/components/posts/PostButton";
-import { PostCard } from "@/components/posts/PostCard";
+import { PostGrid } from "@/components/posts/PostGrid";
+import { CreatorQueue } from "@/components/team/CreatorQueue";
+import { Button } from "@/components/ui/Button";
+import { DemoBadge } from "@/components/ui/DemoBadge";
+import type { CreatorType } from "@/domain/posts/posts";
+import { createClient } from "@/lib/supabase/server";
 import { getViewer } from "@/server/auth";
 import { getFeed } from "@/server/posts";
-import { birthdayStatus, formatMonthDay, parseYmd, todayIn } from "@/domain/birthday/birthday";
-import { ActiveVybeCard } from "@/components/home/ActiveVybeCard";
-import { QuickTiles } from "@/components/home/QuickTiles";
-import { WhatToEatCard } from "@/components/home/WhatToEatCard";
-import { findCity } from "@/domain/map/map";
-import { ACTIVITY_LEVELS, DAY_PARTS } from "@/domain/health/health";
-import { getActiveVybe, getRhythm, nowFor } from "@/server/health";
+import { getPendingApplications } from "@/server/team";
+import { follow, unfollow } from "../actions";
 
-const INTENTS = [
-  { href: "/explore?intent=eat", title: "Eat", line: "Find the best actual dish near you", tone: "text-orange" },
-  { href: "/explore?intent=drink", title: "Drink", line: "Cocktails, happy hour, lounges", tone: "text-coral" },
-  { href: "/vybe/new", title: "Link Up", line: "Plan a night your whole crew can enjoy", tone: "text-sky" },
-];
+type Params = { params: Promise<{ username: string }> };
 
-const FEEDS = [
-  { key: "following", label: "Following" },
-  { key: "creators", label: "Creators" },
-] as const;
+export async function generateMetadata({ params }: Params) {
+  const { username } = await params;
+  return { title: `@${username}` };
+}
 
-type Search = { searchParams: Promise<{ feed?: string; before?: string; city?: string }> };
-
-export default async function HomePage({ searchParams }: Search) {
+export default async function ProfilePage({ params }: Params) {
+  const { username } = await params;
+  const supabase = await createClient();
   const viewer = await getViewer();
-  const { feed: feedParam, before, city: cityParam } = await searchParams;
-  const feed = feedParam === "creators" || !viewer ? "creators" : "following";
-  const birth = viewer?.birthdate ? parseYmd(viewer.birthdate) : null;
-  const bday = birth ? birthdayStatus(birth, todayIn()) : null;
-  const citySlug = viewer ? await getViewerCity(viewer, cityParam) : null;
-  const tz = findCity(citySlug).timezone;
-  const rhythm = viewer ? await getRhythm(viewer.id) : null;
-  const now = rhythm ? nowFor(rhythm, tz) : null;
-  const [page, map, active] = await Promise.all([
-    getFeed(feed === "following" && viewer ? { kind: "following", viewerId: viewer.id } : { kind: "creators" }, before),
-    viewer && citySlug ? getMapData(citySlug, viewer) : Promise.resolve(null),
-    viewer && now ? getActiveVybe(viewer.id, now.day, tz, 8) : Promise.resolve(null),
+
+  // RLS decides visibility: a private or friends-only profile simply returns no row.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, username, display_name, bio, home_city, home_region, is_demo, avatar_url")
+    .eq("username", username)
+    .maybeSingle();
+  if (!profile) notFound();
+
+  const id = profile.id as string;
+  const isMe = viewer?.id === id;
+  const isStaff = !!viewer?.platformRoles.length;
+
+  const [creator, team, followers, following, iFollow, myApplication, page, idCheck] = await Promise.all([
+    supabase.from("creator_profiles").select("creator_type, status").eq("user_id", id).maybeSingle(),
+    supabase.from("team_members").select("title, bio").eq("user_id", id).maybeSingle(),
+    supabase.from("follows").select("*", { count: "exact", head: true }).eq("followee_id", id),
+    supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", id),
+    viewer && !isMe ? supabase.from("follows").select("followee_id").eq("follower_id", viewer.id).eq("followee_id", id).maybeSingle() : Promise.resolve({ data: null }),
+    isMe ? supabase.from("creator_applications").select("status").eq("user_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle() : Promise.resolve({ data: null }),
+    getFeed({ kind: "author", authorId: id }),
+    supabase.rpc("identity_verified", { p_users: [id] }),
   ]);
-  const ci = active?.checkin ?? null;
+  const idVerified = ((idCheck.data ?? []) as unknown[]).length > 0;
+
+  const creatorType = creator.data?.status === "verified" ? (creator.data.creator_type as CreatorType) : null;
+  const teamTitle = (team.data?.title as string | undefined) ?? null;
+  const name = (profile.display_name as string | null) ?? (profile.username as string);
+  const showTeamTools = isMe && isStaff;
+  const pending = showTeamTools ? await getPendingApplications(3) : null;
 
   return (
-    <div className="flex flex-col gap-6">
-      {viewer ? (
-        <section aria-label="Start here" className="flex flex-col gap-4">
-          <div className="flex justify-center md:hidden">
-            <Image src="/brand-wordmark.webp" alt="VYBR8. Eat, drink, link up." width={600} height={200} priority className="h-auto w-44 mix-blend-lighten" />
+    <article className="flex flex-col gap-8">
+      <header className="flex flex-col gap-5 sm:flex-row sm:items-center">
+        <Avatar path={profile.avatar_url as string | null} name={name} size="xl" verified={idVerified} />
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="truncate text-2xl font-bold">{name}</h1>
+            {teamTitle && <TeamBadge title={teamTitle} size="md" />}
+            {creatorType && <CreatorBadge type={creatorType} size="md" />}
+            {idVerified && <span className="rounded-full border border-sky/50 px-2 py-0.5 text-xs font-bold text-sky">ID verified</span>}
+            {profile.is_demo && <DemoBadge label="Demo profile" />}
           </div>
-          <form action="/search" className="flex items-center gap-2 rounded-2xl border border-line bg-surface px-4 focus-within:border-coral/60">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-5 shrink-0 text-muted" aria-hidden><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-            <label htmlFor="home-q" className="sr-only">Search VYBR8</label>
-            <input id="home-q" name="q" placeholder="What are we eating today?" className="min-h-14 flex-1 bg-transparent text-base placeholder:text-muted focus:outline-none" />
-            <Link href="/search" aria-label="Search filters" className="grid size-10 place-items-center rounded-xl bg-surface-2 text-muted hover:text-text">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-5" aria-hidden><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>
-            </Link>
-          </form>
-          <QuickTiles tiles={[
-            { href: "#nearby", label: "Near Me", tone: "text-coral", icon: "pin" },
-            { href: "/vybe", label: "Link Ups", tone: "text-sky", icon: "people" },
-            { href: "/charts", label: "Charts", tone: "text-orange", icon: "trophy" },
-            { href: "/food-trucks", label: "Food Trucks", tone: "text-mint", icon: "truck" },
-          ]} />
-          <ActiveVybeCard sleepMin={active?.sleep?.minutes ?? null} goal={active?.sleepGoal ?? 480} wake={active?.sleep?.wakeTime ?? null} dayLabel={ACTIVITY_LEVELS.find((l) => l.key === ci?.level)?.label ?? null}
-            greeting={now ? DAY_PARTS.find((x) => x.key === now.part)?.greeting ?? null : null} due={now && active ? !active.checkins[now.part] : false} />
-          <WhatToEatCard href={`/eat?city=${findCity(citySlug).slug}`} city={findCity(citySlug).slug} cityName={findCity(citySlug).name} />
-          <QuickTiles tiles={[
-            { href: "/charts?tab=food", label: "Big Back", tone: "text-orange", icon: "plate" },
-            { href: "/charts?tab=drinks", label: "Liquid Lover", tone: "text-coral", icon: "glass" },
-            { href: "/birthday", label: "Birthday Perks", tone: "text-lavender", icon: "cake" },
-            { href: "/places/new", label: "Add a Place", tone: "text-sky", icon: "plus" },
-          ]} />
-        </section>
-      ) : (
-        <section className="flex flex-col gap-5">
-          <Image src="/brand-wordmark.webp" alt="VYBR8. Eat, drink, link up." width={600} height={200} priority className="h-auto w-56 mix-blend-lighten md:hidden" />
-          <h1 className="text-4xl font-extrabold leading-tight md:text-5xl">
-            What&rsquo;s your <span className="vybe-text">vybe</span> tonight?
-          </h1>
-          <p className="max-w-prose text-muted">
-            For the Big Backs and the Liquid Lovers. Find the best actual plate or pour near you, see what your people are eating and drinking, and link up somewhere everyone can order.
+          <p className="text-sm text-muted">
+            @{profile.username as string}
+            {profile.home_city && ` · ${profile.home_city}${profile.home_region ? `, ${profile.home_region}` : ""}`}
           </p>
-          <div className="flex flex-wrap gap-3">
-            <Link href="/auth/sign-up" className="vybe-gradient inline-flex min-h-11 items-center rounded-full px-6 text-sm font-bold text-ink">Find My Vybe</Link>
-            <Link href="/auth/sign-in" className="inline-flex min-h-11 items-center rounded-full border border-line px-6 text-sm font-bold hover:bg-surface-2">Sign in</Link>
-          </div>
-        </section>
-      )}
+          <dl className="flex gap-5 text-sm">
+            <div><dt className="sr-only">Posts</dt><dd><b className="tabular-nums">{page.posts.length}{page.nextCursor ? "+" : ""}</b> <span className="text-muted">posts</span></dd></div>
+            <div><dt className="sr-only">Followers</dt><dd><b className="tabular-nums">{followers.count ?? 0}</b> <span className="text-muted">followers</span></dd></div>
+            <div><dt className="sr-only">Following</dt><dd><b className="tabular-nums">{following.count ?? 0}</b> <span className="text-muted">following</span></dd></div>
+          </dl>
+        </div>
+      </header>
 
-      {viewer && map ? (
-        <section id="nearby" aria-label="Nearby" className="flex scroll-mt-4 flex-col gap-4">
-          <div className="flex items-end justify-between gap-3">
-            <h2 className="font-display text-2xl font-extrabold">Nearby right now</h2>
+      {(team.data?.bio || profile.bio) && <p className="max-w-prose text-muted">{(team.data?.bio as string) || (profile.bio as string)}</p>}
+
+      <div className="flex flex-wrap gap-3">
+        {isMe ? (
+          <>
             <PostButton />
-          </div>
-          <VybeMap data={map} cities={CITIES.map((c) => ({ slug: c.slug, name: c.name }))} mapboxToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN || null} />
-          <VybeStatus city={map.city.slug} mine={map.myStatus} canDrink={viewer.is21Plus} />
-        </section>
-      ) : (
-        <VybeWave />
-      )}
-
-      {bday && bday.kind !== "later" && (
-        <Link href="/birthday" className="vybe-ring flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] p-5 hover:bg-surface-2">
-          <span>
-            <span className="block font-display text-xl font-extrabold">
-              {bday.kind === "today" ? "Happy birthday!" : <>Your birthday is in <span className="vybe-text">{bday.days} {bday.days === 1 ? "day" : "days"}</span></>}
-            </span>
-            <span className="text-sm text-muted">{bday.kind === "today" ? "Your birthday perks are ready." : `${formatMonthDay(bday.date)} · see every place with free food, drinks and discounts.`}</span>
-          </span>
-          <span className="text-sm font-bold text-sky">Birthday Perks →</span>
-        </Link>
-      )}
-
-
-      {!viewer && (
-        <section aria-label="Start with what you want" className="grid gap-3 sm:grid-cols-3">
-          {INTENTS.map((i) => (
-            <Link key={i.title} href={i.href} className="rounded-[var(--radius-card)] border border-line bg-surface p-5 transition hover:border-coral/50 hover:bg-surface-2">
-              <p className={`font-display text-2xl font-bold ${i.tone}`}>{i.title}</p>
-              <p className="mt-1 text-sm text-muted">{i.line}</p>
-            </Link>
-          ))}
-        </section>
-      )}
-
-      <section aria-labelledby="timeline-h" className="mx-auto flex w-full max-w-xl flex-col gap-4">
-        <h2 id="timeline-h" className="text-xl font-bold">{viewer ? "Your timeline" : "Fresh from VYBR8 creators"}</h2>
-        {viewer && <FeedTabs tabs={FEEDS} active={feed} base="/" />}
-        {page.posts.length === 0 ? (
-          <div className="rounded-[var(--radius-card)] border border-dashed border-line p-6 text-center text-sm text-muted">
-            {feed === "following" ? (
-              <>Follow creators and add friends to fill your timeline. <Link href="/explore" className="font-semibold text-sky">Find creators on Explore</Link></>
-            ) : (
-              <>No creator posts yet.</>
-            )}
-          </div>
+            <Link href="/groups" className="vybe-ring inline-flex min-h-11 items-center rounded-full px-5 text-sm font-bold">Groups &amp; Family</Link>
+            <Link href="/profile/settings" className="inline-flex min-h-11 items-center rounded-full border border-line px-5 text-sm font-bold hover:bg-surface-2">Edit profile &amp; privacy</Link>
+            <form action="/auth/sign-out" method="post"><button className="inline-flex min-h-11 items-center rounded-full px-5 text-sm font-semibold text-muted hover:text-text">Sign out</button></form>
+          </>
+        ) : viewer ? (
+          <form action={iFollow.data ? unfollow : follow}>
+            <input type="hidden" name="userId" value={id} />
+            <input type="hidden" name="username" value={profile.username as string} />
+            <Button type="submit" variant={iFollow.data ? "ghost" : "primary"}>{iFollow.data ? "Following" : "Follow"}</Button>
+          </form>
         ) : (
-          <ul className="flex flex-col gap-5">
-            {page.posts.map((p, i) => (
-              <li key={p.id}><PostCard post={p} signedIn={!!viewer} priority={i === 0} /></li>
+          <Link href={`/auth/sign-in?next=/profile/${profile.username}`} className="vybe-gradient inline-flex min-h-11 items-center rounded-full px-5 text-sm font-bold text-ink">Follow</Link>
+        )}
+      </div>
+
+      {showTeamTools && (
+        <section aria-labelledby="tools-h" className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-mint/40 bg-surface p-5">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 id="tools-h" className="font-bold">{viewer!.platformRoles.includes("admin") ? "Founder & admin tools" : "VYBR8 Team tools"}</h2>
+            <span className="text-xs text-faint">Only you see this</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(viewer!.platformRoles.includes("admin")
+              ? [["/admin", "Admin"], ["/admin/import", "Import real places"], ["/admin/support", "Support inbox"], ["/team/moderation", "Moderation"], ["/team/creators", "Creator queue"]]
+              : [["/admin/support", "Support inbox"], ["/team/moderation", "Moderation"], ["/team/creators", "Creator queue"]]
+            ).map(([href, label], i) => (
+              <Link key={href} href={href!} className={`inline-flex min-h-11 items-center rounded-full px-5 text-sm font-bold ${i === 0 ? "bg-mint text-ink" : "border border-line hover:bg-surface-2"}`}>{label}</Link>
             ))}
-          </ul>
-        )}
-        {page.nextCursor && (
-          <Link href={`/?feed=${feed}&before=${encodeURIComponent(page.nextCursor)}`} className="self-center rounded-full border border-line px-5 py-2.5 text-sm font-bold hover:bg-surface-2">
-            Load more
-          </Link>
-        )}
+          </div>
+        </section>
+      )}
+
+      {isMe && !creatorType && (
+        <section className="rounded-[var(--radius-card)] vybe-ring flex flex-col gap-2 p-5">
+          <h2 className="text-lg font-bold">Big Back or Liquid Lover?</h2>
+          {myApplication.data?.status === "pending" ? (
+            <p className="text-sm text-muted">Your creator application is with the VYBR8 team. We&rsquo;ll let you know once it&rsquo;s reviewed.</p>
+          ) : (
+            <>
+              <p className="text-sm text-muted">Verified creators get a badge and show up on Explore and in everyone&rsquo;s Creators timeline.</p>
+              <Link href="/creators/apply" className="self-start text-sm font-bold text-sky hover:underline">Apply to be a verified creator</Link>
+            </>
+          )}
+        </section>
+      )}
+
+      <section aria-labelledby="posts-h" className="flex flex-col gap-3">
+        <h2 id="posts-h" className="text-lg font-bold">Plates &amp; Pours</h2>
+        <PostGrid posts={page.posts} empty={isMe ? <>Your posts show up here. <Link href="/post/new" className="font-semibold text-sky">Post your first plate</Link></> : "No posts yet."} />
       </section>
-    </div>
+
+      {showTeamTools && pending && (
+        <section aria-labelledby="team-h" className="flex flex-col gap-4 border-t border-line pt-8">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 id="team-h" className="text-xl font-bold">VYBR8 Team · Creator verification</h2>
+            <Link href="/team/creators" className="text-sm font-semibold text-sky hover:underline">Open full queue ({pending.total})</Link>
+          </div>
+          <p className="text-sm text-muted">Only the VYBR8 team sees this section. Approving gives the person a verified Big Back or Liquid Lover badge and features their posts on Explore.</p>
+          <CreatorQueue applications={pending.items} returnTo={`/profile/${profile.username}`} />
+        </section>
+      )}
+    </article>
   );
 }

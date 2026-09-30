@@ -1,321 +1,223 @@
 import Link from "next/link";
-import { OSM_ATTRIBUTION, OSM_COPYRIGHT_URL } from "@/domain/places/osm";
-import { openStatus, weekSchedule } from "@/domain/map/hours";
-import { notFound, redirect } from "next/navigation";
-import { PerkCard } from "@/components/birthday/PerkCard";
-import { PostButton } from "@/components/posts/PostButton";
-import { LinkUpHere } from "@/components/linkups/LinkUpHere";
 import { ShareButton } from "@/components/share/ShareButton";
-import { PostGrid } from "@/components/posts/PostGrid";
-import { DemoBadge } from "@/components/ui/DemoBadge";
-import { createClient } from "@/lib/supabase/server";
-import { getViewer } from "@/server/auth";
-import { getBirthdayPerks } from "@/server/birthday";
-import { getFeed } from "@/server/posts";
-import { getMenu, getPlaceStats } from "@/server/menus";
+import { notFound } from "next/navigation";
 import { MenuList } from "@/components/menu/MenuList";
-import { RatePlace } from "@/components/ratings/RatePlace";
-import { ApprovedBadge } from "@/components/places/ApprovedBadge";
-import { placeTitle } from "@/domain/places/places";
-import { reportClosed, reviewClosure, setBrand, submitHours } from "@/app/(app)/places/actions";
-import { HoursEditor } from "@/components/places/HoursEditor";
 import { RankBadge } from "@/components/charts/RankBadge";
-import { findCity, localClock, type Hours } from "@/domain/map/map";
 import { ranksForBusiness } from "@/server/charts";
+import { RatePlace } from "@/components/ratings/RatePlace";
+import { DemoBadge } from "@/components/ui/DemoBadge";
+import { findCity } from "@/domain/map/map";
+import {
+  directionsUrl, formatTime, formatWindow, groupStopsByDay, postedAgo, SOURCE_LABEL, STOP_STATUS_LABEL, type StopState,
+} from "@/domain/trucks/trucks";
+import { getViewer } from "@/server/auth";
+import { getMenu, getPlaceStats } from "@/server/menus";
+import { getTruck, type TruckStop } from "@/server/trucks";
+import { followTruck, setNotify, unfollowTruck } from "../actions";
 
-type Params = { params: Promise<{ slug: string }>; searchParams: Promise<{ added?: string; closed?: string; hours?: string }> };
+type Props = { params: Promise<{ slug: string }> };
 
-const KIND_LABEL: Record<string, string> = {
-  restaurant: "Restaurant", bar: "Bar", cocktail_lounge: "Cocktail lounge", lounge: "Lounge", cigar_lounge: "Cigar lounge",
-  hookah_lounge: "Hookah lounge", cafe: "Coffee shop", tea_shop: "Tea & matcha", juice_bar: "Juice & lemonade", bakery: "Bakery", food_truck: "Food truck", brewery: "Brewery", nightlife: "Nightlife",
+export async function generateMetadata({ params }: Props) {
+  const truck = await getTruck((await params).slug, null);
+  return { title: truck?.name ?? "Food truck", description: truck?.cuisine ? `${truck.name} · ${truck.cuisine}. Where it's parked and what to order.` : undefined };
+}
+
+const STATE_STYLE: Record<StopState, string> = {
+  here_now: "bg-coral/15 text-coral",
+  later_today: "border border-sky/50 text-sky",
+  upcoming: "border border-line text-muted",
+  ended: "bg-surface-2 text-faint",
+  cancelled: "bg-danger/10 text-danger",
 };
 
-async function loadVenue(slug: string) {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("businesses")
-    .select("id, slug, name, branch_name, kind, description, price_level, website, phone, source, is_demo, is_claimed, status, closed_at, brand_id, brand:brands ( name ), locations:business_locations ( id, label, address_line1, city, city_slug, region, postal_code, is_primary, timezone, hours:business_hours ( weekday, opens_at, closes_at ) )")
-    .eq("slug", slug)
-    .is("deleted_at", null)
-    .maybeSingle();
-  return data;
+function stopBadge(s: TruckStop): string {
+  if (s.status === "cancelled") return "CANCELLED";
+  if (s.status === "delayed") return s.state === "ended" ? "ENDED" : "DELAYED";
+  if (s.status === "sold_out") return s.state === "ended" ? "ENDED" : "SOLD OUT";
+  if (s.state === "here_now") return "HERE NOW";
+  if (s.state === "ended") return s.status === "closed" ? "CLOSED" : "ENDED";
+  return STOP_STATUS_LABEL[s.status].toUpperCase();
 }
 
-export async function generateMetadata({ params }: Params) {
-  const venue = await loadVenue((await params).slug);
-  return { title: venue ? placeTitle(venue.name as string, venue.branch_name as string | null) : "Venue" };
+function BigScore({ label, value }: { label: string; value: number | null }) {
+  return (
+    <div className="flex flex-col items-center gap-1 rounded-2xl border border-line bg-surface p-3 text-center">
+      <span className="font-display text-3xl font-extrabold leading-none">{value != null ? <span className="vybe-text">{value.toFixed(1)}</span> : <span className="text-faint">–</span>}</span>
+      <span className="text-xs font-semibold text-muted">{label}</span>
+    </div>
+  );
 }
 
-export default async function VenuePage({ params, searchParams }: Params) {
+export default async function TruckPage({ params }: Props) {
   const { slug } = await params;
-  const { added, closed, hours: hoursMsg } = await searchParams;
-  const venue = await loadVenue(slug);
-  if (!venue) notFound();
-  const viewerP = getViewer();
-  const citySlug = ((venue.locations ?? []) as { city_slug: string | null; is_primary: boolean }[]).sort((a, b) => Number(b.is_primary) - Number(a.is_primary))[0]?.city_slug ?? null;
-  const [viewer, page, perks, menu, stats, chefRows, siblings, ranks] = await Promise.all([
-    viewerP,
-    getFeed({ kind: "business", businessId: venue.id as string }),
-    getBirthdayPerks({ businessId: venue.id as string }),
-    viewerP.then((v) => getMenu(venue.id as string, v?.id ?? null)),
-    getPlaceStats(venue.id as string),
-    (async () => {
-      const supabase = await createClient();
-      const { data } = await supabase
-        .from("chef_business_relationships")
-        .select("role, end_date, verification_status, chef:chef_profiles ( slug, professional_name )")
-        .eq("business_id", venue.id as string);
-      const today = new Date().toISOString().slice(0, 10);
-      return ((data ?? []) as unknown as { role: string; end_date: string | null; verification_status: string; chef: { slug: string; professional_name: string } | null }[])
-        .filter((r) => r.chef && (!r.end_date || r.end_date >= today));
-    })(),
-    // Other locations of the same franchise brand.
-    (async () => {
-      if (!venue.brand_id) return [];
-      const supabase = await createClient();
-      const { data } = await supabase
-        .from("businesses")
-        .select("slug, name, branch_name, is_claimed, locations:business_locations ( address_line1, city, region )")
-        .eq("brand_id", venue.brand_id as string)
-        .eq("status", "active")
-        .neq("id", venue.id as string)
-        .is("deleted_at", null)
-        .order("name")
-        .limit(12);
-      return (data ?? []) as unknown as { slug: string; name: string; branch_name: string | null; is_claimed: boolean; locations: { address_line1: string | null; city: string; region: string }[] }[];
-    })(),
-    citySlug ? ranksForBusiness(venue.id as string, citySlug, findCity(citySlug).name) : Promise.resolve({ place: null, items: {} }),
+  const viewer = await getViewer();
+  const truck = await getTruck(slug, viewer?.id ?? null);
+  if (!truck) notFound();
+  const [menu, stats, ranks] = await Promise.all([
+    getMenu(truck.id, viewer?.id ?? null),
+    getPlaceStats(truck.id),
+    truck.homeCitySlug ? ranksForBusiness(truck.id, truck.homeCitySlug, findCity(truck.homeCitySlug).name, true) : Promise.resolve({ place: null, items: {} }),
   ]);
-  if (venue.kind === "food_truck") redirect(`/food-trucks/${venue.slug}`);
-  const locations = (venue.locations ?? []) as { id: string; label: string | null; address_line1: string | null; city: string; region: string; postal_code: string | null; is_primary: boolean; timezone: string; hours: { weekday: number; opens_at: string; closes_at: string }[] | null }[];
-  const brand = (Array.isArray(venue.brand) ? venue.brand[0] : venue.brand) as { name: string } | null;
-  const isStaff = !!viewer?.platformRoles.length;
-  const { data: canEditRaw } = viewer && !isStaff ? await (await createClient()).rpc("can_edit_place", { p_business: venue.id }) : { data: null };
-  const canEditHours = isStaff || canEditRaw === true;
-  const primary = locations.find((l) => l.is_primary) ?? locations[0];
-  const hours: Hours[] = (primary?.hours ?? []).map((h) => ({ weekday: h.weekday, opensAt: h.opens_at, closesAt: h.closes_at }));
-  const status = primary ? openStatus(hours, primary.timezone) : null;
-  const week = weekSchedule(hours);
-  const todayDow = primary ? localClock(primary.timezone, new Date()).weekday : -1;
-  const plates = page.posts.filter((p) => p.kind === "plate").length;
-  const pours = page.posts.filter((p) => p.kind === "pour").length;
+  const now = new Date();
+  const returnTo = `/food-trucks/${truck.slug}`;
+  const groups = groupStopsByDay(truck.stops.filter((s) => s.state !== "ended" || now.getTime() - new Date(s.endAt).getTime() < 12 * 3_600_000), truck.timezone, now);
+  const hereStop = truck.stops.find((s) => s.state === "here_now");
+  const nextStop = truck.stops.find((s) => s.state === "later_today" || s.state === "upcoming");
+  const target = truck.live ? { lat: truck.live.lat, lng: truck.live.lng } : hereStop?.lat != null && hereStop.lng != null ? { lat: hereStop.lat, lng: hereStop.lng } : nextStop?.lat != null && nextStop.lng != null ? { lat: nextStop.lat, lng: nextStop.lng } : null;
+  const homeCity = truck.homeCitySlug ? findCity(truck.homeCitySlug) : null;
+  const hidden = (
+    <>
+      <input type="hidden" name="truck" value={truck.id} />
+      <input type="hidden" name="slug" value={truck.slug} />
+    </>
+  );
 
   return (
-    <article className="flex flex-col gap-10">
-      <header className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-faint">
-          <span>{KIND_LABEL[venue.kind as string] ?? venue.kind}</span>
-          {venue.price_level && <span aria-label={`Price level ${venue.price_level} of 4`}>· {"$".repeat(venue.price_level as number)}</span>}
-          {primary && <span>· {primary.label ? `${primary.label}, ` : ""}{primary.city}, {primary.region}</span>}
-          {venue.is_demo && <DemoBadge label="Demo venue" />}
+    <article className="mx-auto flex w-full max-w-2xl flex-col gap-8">
+      <Link href="/food-trucks" className="text-sm font-semibold text-muted hover:text-text">← Food trucks</Link>
+
+      <header className="flex flex-col gap-4">
+        <div className="relative h-40 overflow-hidden rounded-[var(--radius-card)] border border-line sm:h-52">
+          {truck.photoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- truck photo from storage or demo path
+            <img src={truck.photoUrl} alt={`${truck.name} truck`} className="size-full object-cover" />
+          ) : (
+            <div aria-hidden className="vybe-gradient grid size-full place-items-center">
+              <span className="font-display text-6xl font-extrabold text-ink/80">{truck.name.slice(0, 1)}</span>
+            </div>
+          )}
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-4xl font-extrabold">{placeTitle(venue.name as string, venue.branch_name as string | null)}</h1>
-          {venue.is_claimed && <ApprovedBadge />}
-        </div>
-        {ranks.place && <div><RankBadge badge={ranks.place} /></div>}
-        {primary && (
-          <p className="text-sm text-muted">
-            {primary.address_line1 ? `${primary.address_line1}, ` : ""}{primary.city}, {primary.region}{primary.postal_code ? ` ${primary.postal_code}` : ""}
-            {primary.address_line1 && (
-              <> · <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${venue.name} ${primary.address_line1} ${primary.city} ${primary.region}`)}`} target="_blank" rel="noopener noreferrer" className="font-semibold text-sky hover:underline">Directions</a></>
-            )}
-          </p>
-        )}
-        {status ? (
-          <a href="#hours-h" className={`self-start text-sm font-bold ${status.open ? "text-mint" : "text-coral"}`}>{status.line}</a>
-        ) : (
-          <a href="#hours-h" className="self-start text-sm text-faint">Hours not listed yet</a>
-        )}
-        {venue.status === "hidden" && venue.closed_at && (
-          <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-danger/50 bg-danger/10 p-3 text-sm">
-            <span>Marked <b>permanently closed</b>. Hidden from lists, the map and search. Only the VYBR8 Team sees this page.</span>
-            {isStaff && (
-              <form action={reviewClosure}>
-                <input type="hidden" name="business" value={venue.id as string} /><input type="hidden" name="closed" value="0" /><input type="hidden" name="back" value={`/venue/${venue.slug}`} />
-                <button className="rounded-full border border-line px-4 py-1.5 text-xs font-bold">It&rsquo;s open: bring it back</button>
-              </form>
-            )}
+        <div className="flex flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-faint">
+            <span>Food truck</span>
+            {homeCity && <span>· {homeCity.name}, {homeCity.region}</span>}
+            {truck.isDemo && <DemoBadge label="Demo truck" />}
           </div>
-        )}
-        {closed === "reported" && <p role="status" className="rounded-xl border border-sky/40 bg-sky/10 p-3 text-sm">Thanks for the heads up. Once a few people confirm, VYBR8 takes it down.</p>}
-        {closed === "error" && <p role="alert" className="rounded-xl border border-danger/50 p-3 text-sm text-danger">That didn&rsquo;t go through. Try again.</p>}
-        {venue.status === "pending" && (
-          <p role="status" className="rounded-xl border border-sky/40 bg-sky/10 p-3 text-sm">
-            {added ? "Thanks for adding it! " : ""}The VYBR8 Team is taking a quick look. Only you can see this place until it&rsquo;s live.
-          </p>
-        )}
-        {venue.description && <p className="max-w-prose text-muted">{venue.description}</p>}
-        {!venue.is_claimed && !venue.is_demo && (
-          <p className="text-sm text-muted">
-            Own or manage this location? <Link href={`/venue/${venue.slug}/claim`} className="font-bold text-coral">Claim it</Link> to run the listing and get the VYBR8 Approved badge.
-          </p>
-        )}
-        <div className="flex flex-wrap gap-3 pt-1">
-          <PostButton href={viewer ? `/post/new?venue=${venue.slug}` : `/auth/sign-in?next=/post/new?venue=${venue.slug}`} label="Post your plate here" />
-          {venue.status === "active" && <LinkUpHere venueSlug={venue.slug as string} signedIn={!!viewer} isAdult={viewer?.isAdult ?? false} />}
-          <ShareButton path={`/venue/${venue.slug}`} title={placeTitle(venue.name as string, venue.branch_name as string | null)} text={`Pull up? ${placeTitle(venue.name as string, venue.branch_name as string | null)} on VYBR8`} />
-          {venue.website && (
-            <a href={venue.website as string} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded-full border border-line px-5 text-sm font-bold hover:bg-surface-2">
-              Website
-            </a>
-          )}
-          {venue.phone && (
-            <a href={`tel:${String(venue.phone).replace(/[^\d+]/g, "")}`} className="inline-flex min-h-11 items-center rounded-full border border-line px-5 text-sm font-bold hover:bg-surface-2">
-              Call
-            </a>
-          )}
+          <h1 className="text-4xl font-extrabold">{truck.name}</h1>
+          {ranks.place && <div className="py-1"><RankBadge badge={ranks.place} /></div>}
+          {truck.cuisine && <p className="text-lg text-muted">{truck.cuisine}</p>}
+          {truck.description && <p className="max-w-prose text-muted">{truck.description}</p>}
+          <p className="text-xs text-faint">{truck.followers} {truck.followers === 1 ? "follower" : "followers"}</p>
         </div>
       </header>
 
-      <section aria-labelledby="reviews-h" className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 id="reviews-h" className="text-xl font-bold">Ratings</h2>
-          {viewer && <RatePlace businessId={venue.id as string} returnTo={`/venue/${venue.slug}`} />}
-        </div>
-        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {([["Overall", stats.overall], ["Service Vybe", stats.serviceVybe], ["Value", stats.value], ["Aesthetic", stats.aesthetic]] as const).map(([k, v]) => (
-            <div key={k} className="rounded-2xl border border-line bg-surface p-4 text-center">
-              <dt className="text-xs font-bold uppercase tracking-wide text-faint">{k}</dt>
-              <dd className="font-display text-2xl font-extrabold">{v != null ? <span className="vybe-text">{v.toFixed(1)}</span> : <span className="text-faint">–</span>}</dd>
-            </div>
-          ))}
-        </dl>
-        <p className="text-xs text-faint">{stats.count ? `${stats.count} ${stats.count === 1 ? "rating" : "ratings"} of the place.` : "No ratings of the place yet."} Dishes and drinks are rated one by one below.</p>
-        {chefRows.length > 0 && (
-          <p className="text-sm">
-            <span className="text-muted">In the kitchen:</span>{" "}
-            {chefRows.map((r, i) => <span key={r.chef!.slug}>{i > 0 && ", "}<Link href={`/chef/${r.chef!.slug}`} className="font-semibold text-sky">{r.chef!.professional_name}</Link> <span className="text-muted">({r.role}{r.verification_status === "self_reported" ? ", self-reported" : ""})</span></span>)}
+      {truck.live && (
+        <section aria-label="Live now" className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-coral/60 bg-coral/10 p-4">
+          <p className="flex items-center gap-2 font-display text-xl font-extrabold text-coral">
+            <i aria-hidden className="size-2.5 animate-pulse rounded-full bg-coral" />
+            WE&rsquo;RE HERE until {formatTime(truck.live.expiresAt, truck.timezone)}
           </p>
-        )}
-      </section>
-
-      {siblings.length > 0 && (
-        <section aria-labelledby="locs-h" className="flex flex-col gap-3">
-          <h2 id="locs-h" className="text-xl font-bold">Other {brand?.name ?? venue.name} locations</h2>
-          <p className="text-xs text-faint">Each location has its own ratings, menu and owner.</p>
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {siblings.map((b) => {
-              const l = b.locations[0];
-              return (
-                <li key={b.slug}>
-                  <Link href={`/venue/${b.slug}`} className="flex flex-col rounded-2xl border border-line bg-surface p-3 hover:bg-surface-2">
-                    <span className="flex flex-wrap items-center gap-2 font-semibold">{placeTitle(b.name, b.branch_name)}{b.is_claimed && <ApprovedBadge small />}</span>
-                    {l && <span className="text-xs text-muted">{l.address_line1 ? `${l.address_line1}, ` : ""}{l.city}, {l.region}</span>}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+          {truck.live.note && <p className="text-sm">{truck.live.note}</p>}
+          <p className="text-xs text-muted">Posted by the truck · {postedAgo(truck.live.startedAt, now, truck.timezone)}</p>
+          <a href={directionsUrl(truck.live.lat, truck.live.lng)} target="_blank" rel="noopener noreferrer" className="vybe-gradient inline-flex min-h-11 w-fit items-center rounded-full px-5 text-sm font-bold text-ink">Directions</a>
         </section>
       )}
 
-      {isStaff && (
-        <form action={setBrand} className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-line p-3 text-sm">
-          <input type="hidden" name="business" value={venue.id as string} />
-          <input type="hidden" name="slug" value={venue.slug as string} />
-          <label htmlFor="brand" className="font-semibold text-muted">Team · franchise brand</label>
-          <input id="brand" name="brand" defaultValue={brand?.name ?? ""} placeholder="e.g. Chick-fil-A (blank = none)" className="min-h-10 flex-1 rounded-xl border border-line bg-surface px-3" />
-          <button className="min-h-10 rounded-full border border-line px-4 font-bold">Save</button>
-        </form>
-      )}
-
-      <section aria-labelledby="hours-h" className="flex scroll-mt-4 flex-col gap-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 id="hours-h" className="text-xl font-bold">Hours</h2>
-          {status && <span className={`text-sm font-bold ${status.open ? "text-mint" : "text-coral"}`}>{status.line}</span>}
-        </div>
-        {hours.length ? (
-          <dl className="grid max-w-md gap-1 rounded-2xl border border-line bg-surface p-4 text-sm">
-            {week.map((d) => (
-              <div key={d.weekday} className={`flex justify-between gap-4 ${d.weekday === todayDow ? "font-bold text-text" : "text-muted"}`}>
-                <dt>{d.name}{d.weekday === todayDow ? " (today)" : ""}</dt>
-                <dd className="text-right tabular-nums">{d.ranges.length ? d.ranges.join(", ") : "Closed"}</dd>
-              </div>
-            ))}
-          </dl>
-        ) : (
-          <p className="rounded-2xl border border-dashed border-line p-5 text-sm text-muted">
-            Hours aren&rsquo;t listed yet.{" "}
-            {!venue.is_claimed && <>Own it? <Link href={`/venue/${venue.slug}/claim`} className="font-semibold text-coral">Claim it</Link> to add your hours. </>}
-            Know them? Add them below.
-          </p>
-        )}
-        {hours.length > 0 && <p className="text-xs text-faint">Hours can change on holidays. {venue.source === "osm" && !venue.is_claimed ? "Listed from OpenStreetMap." : ""}</p>}
-        {hoursMsg === "saved" && <p role="status" className="text-sm text-mint">Hours saved. They&rsquo;re live.</p>}
-        {hoursMsg === "suggested" && <p role="status" className="text-sm text-mint">Thanks! The VYBR8 Team will check the hours and put them up.</p>}
-        {hoursMsg === "error" && <p role="alert" className="text-sm text-danger">Those hours didn&rsquo;t save. Check the times and try again.</p>}
-        {primary && (viewer ? (
-          <details className="max-w-xl rounded-2xl border border-line bg-surface p-4" open={hoursMsg === "error"}>
-            <summary className="cursor-pointer list-none text-sm font-bold text-sky">
-              {canEditHours ? (hours.length ? "Edit hours" : "Add hours") : hours.length ? "Hours wrong? Suggest a fix" : "Know the hours? Add them"}
-            </summary>
-            <div className="mt-3">
-              <HoursEditor action={submitHours} locationId={primary.id} slug={venue.slug as string} initial={hours} mode={canEditHours ? "save" : "suggest"} />
-            </div>
-          </details>
-        ) : (
-          <Link href={`/auth/sign-in?next=/venue/${venue.slug}`} className="text-sm font-semibold text-sky">Know the hours? Sign in to add them</Link>
-        ))}
-      </section>
-
-      <section aria-labelledby="menu-h" className="flex flex-col gap-3">
-        <h2 id="menu-h" className="text-xl font-bold">Menu &amp; VYBR8 scores</h2>
-        {menu.length ? (
-          <MenuList items={menu} signedIn={!!viewer} returnTo={`/venue/${venue.slug}`} ranks={ranks.items} />
-        ) : (
-          <div className="flex flex-col gap-2 rounded-2xl border border-dashed border-line p-5 text-sm text-muted">
-            <p>No menu on VYBR8 yet. {venue.is_claimed ? "The owner can add it from their business page." : "Owners add their full menu, prices and nutrition when they claim this place."}</p>
-            <div className="flex flex-wrap gap-2">
-              {venue.website && <a href={venue.website as string} target="_blank" rel="noopener noreferrer" className="rounded-full border border-line px-4 py-2 font-bold text-text hover:bg-surface-2">See their menu on their website</a>}
-              <Link href={viewer ? `/post/new?venue=${venue.slug}` : `/auth/sign-in?next=/post/new?venue=${venue.slug}`} className="rounded-full border border-line px-4 py-2 font-bold text-text hover:bg-surface-2">Ate here? Post your plate</Link>
-              {!venue.is_claimed && !venue.is_demo && <Link href={`/venue/${venue.slug}/claim`} className="rounded-full border border-coral/50 px-4 py-2 font-bold text-coral">Own it? Claim it</Link>}
-            </div>
-          </div>
-        )}
-      </section>
-
-      {perks.length > 0 && (
-        <section aria-labelledby="perks-h" className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 id="perks-h" className="text-xl font-bold">Birthday perks</h2>
-            <Link href="/birthday" className="text-sm font-semibold text-sky hover:underline">All birthday perks</Link>
-          </div>
-          <ul className="grid gap-3 sm:grid-cols-2">
-            {perks.map((p) => <li key={p.id}><PerkCard perk={p} showVenue={false} /></li>)}
-          </ul>
-        </section>
-      )}
-
-      <section aria-labelledby="plates-h" className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 id="plates-h" className="text-xl font-bold">Plates &amp; Pours</h2>
-          <p className="text-sm text-muted tabular-nums">{plates} plates · {pours} pours</p>
-        </div>
-        <PostGrid
-          posts={page.posts}
-          empty={<>No one has posted from here yet. <Link href={`/post/new?venue=${venue.slug}`} className="font-semibold text-sky">Be the first</Link></>}
-        />
-      </section>
-
-      {viewer && venue.status === "active" && (
-        <form action={reportClosed} className="flex flex-wrap items-center gap-2 text-xs text-faint">
-          <input type="hidden" name="business" value={venue.id as string} /><input type="hidden" name="slug" value={venue.slug as string} />
-          {isStaff ? (
-            <button className="rounded-full border border-danger/60 px-4 py-2 font-bold text-danger hover:bg-danger/10">Team · Mark permanently closed</button>
+      <div className="flex flex-wrap gap-2">
+        {viewer ? (
+          truck.following ? (
+            <>
+              <form action={unfollowTruck}>
+                {hidden}
+                <button className="min-h-11 rounded-full border border-line px-5 text-sm font-bold hover:bg-surface-2">Following · Unfollow</button>
+              </form>
+              <form action={setNotify}>
+                {hidden}
+                <input type="hidden" name="notify" value={truck.notify ? "0" : "1"} />
+                <button aria-pressed={truck.notify} className={`min-h-11 rounded-full px-5 text-sm font-bold ${truck.notify ? "border border-sky/60 text-sky" : "border border-line text-muted"}`}>
+                  {truck.notify ? "Notify me: on" : "Notify me: off"}
+                </button>
+              </form>
+            </>
           ) : (
-            <>Closed for good? <button className="font-semibold underline hover:text-muted">Let us know</button></>
-          )}
-        </form>
+            <form action={followTruck}>
+              {hidden}
+              <button className="vybe-gradient min-h-11 rounded-full px-6 text-sm font-bold text-ink">Follow and save</button>
+            </form>
+          )
+        ) : (
+          <Link href={`/auth/sign-in?next=${encodeURIComponent(returnTo)}`} className="vybe-gradient inline-flex min-h-11 items-center rounded-full px-6 text-sm font-bold text-ink">Sign in to follow</Link>
+        )}
+        {target && !truck.live && (
+          <a href={directionsUrl(target.lat, target.lng)} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded-full border border-line px-5 text-sm font-bold hover:bg-surface-2">Directions</a>
+        )}
+        <ShareButton path={`/food-trucks/${truck.slug}`} title={truck.name} text={`${truck.name} food truck on VYBR8`} />
+        {truck.orderingUrl && (
+          <a href={truck.orderingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded-full border border-line px-5 text-sm font-bold hover:bg-surface-2">Order ahead</a>
+        )}
+        {truck.canEdit && (
+          <Link href="/food-truck/dashboard" className="inline-flex min-h-11 items-center rounded-full px-4 text-sm font-bold text-coral hover:bg-surface-2">Manage truck</Link>
+        )}
+      </div>
+      {viewer && truck.following && <p className="-mt-6 text-xs text-faint">With Notify me on, you&rsquo;ll get an alert when {truck.name} posts a new stop.</p>}
+      {(truck.socials.length > 0 || truck.website) && (
+        <ul aria-label="Socials" className="-mt-4 flex flex-wrap gap-x-4 gap-y-1 text-sm font-semibold">
+          {truck.socials.map((s) => <li key={s.url}><a href={s.url} target="_blank" rel="noopener noreferrer" className="text-sky hover:underline">{s.label}</a></li>)}
+          {truck.website && /^https:\/\//.test(truck.website) && <li><a href={truck.website} target="_blank" rel="noopener noreferrer" className="text-sky hover:underline">Website</a></li>}
+        </ul>
       )}
 
-      {venue.source === "osm" && !venue.is_claimed && (
-        <p className="text-xs text-faint">
-          Place info from <a href={OSM_COPYRIGHT_URL} className="underline hover:text-muted">{OSM_ATTRIBUTION}</a>. Something off?{" "}
-          <Link href={`/venue/${venue.slug}/claim`} className="underline hover:text-muted">Own it? Claim it</Link> or{" "}
-          <Link href={`/help?topic=other&from=/venue/${venue.slug}#contact`} className="underline hover:text-muted">tell us</Link>.
+      <section aria-labelledby="where-h" className="flex flex-col gap-4">
+        <h2 id="where-h" className="text-xl font-extrabold tracking-wide">WHERE&rsquo;S THE TRUCK?</h2>
+        {groups.length === 0 ? (
+          <p className="rounded-2xl border border-dashed border-line p-5 text-sm text-muted">No stops posted for the next two weeks. Follow to hear when they post one.</p>
+        ) : (
+          groups.map((g) => (
+            <div key={g.day} className="flex flex-col gap-2">
+              <h3 className="text-xs font-extrabold uppercase tracking-[0.18em] text-faint">{g.label}</h3>
+              <ul className="flex flex-col divide-y divide-line rounded-2xl border border-line bg-surface">
+                {g.stops.map((s) => (
+                  <li key={s.id} className={`flex flex-col gap-1.5 p-4 ${s.state === "ended" || s.state === "cancelled" ? "opacity-70" : ""}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-display font-bold tabular-nums">{formatWindow(s.startAt, s.endAt, s.timezone)}</p>
+                      <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-extrabold tracking-wide ${s.status === "delayed" || s.status === "sold_out" ? "bg-orange/15 text-orange" : STATE_STYLE[s.state]}`}>{stopBadge(s)}</span>
+                    </div>
+                    <p className={`font-semibold ${s.status === "cancelled" ? "line-through" : ""}`}>{s.locationName}</p>
+                    {s.eventName && <p className="text-sm text-lavender">{s.eventName}</p>}
+                    {s.address && <p className="text-sm text-faint">{s.address}</p>}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint">
+                      <span>{SOURCE_LABEL[s.source]}{s.verifiedAt ? " · verified" : ""} · updated {postedAgo(s.updatedAt, now, s.timezone)}</span>
+                      {s.lat != null && s.lng != null && s.state !== "ended" && s.state !== "cancelled" && (
+                        <a href={directionsUrl(s.lat, s.lng)} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 items-center font-semibold text-sky">Directions</a>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        )}
+        <p className="text-xs text-faint">Locations come from the truck and always show when they were posted. Plans change, so check the truck&rsquo;s socials before you go.</p>
+      </section>
+
+      <section aria-labelledby="scores-h" className="flex flex-col gap-3">
+        <h2 id="scores-h" className="text-xl font-bold">Ratings</h2>
+        <div className="grid grid-cols-3 gap-2">
+          <BigScore label="Truck" value={stats.overall} />
+          <BigScore label="Service Vybe" value={stats.serviceVybe} />
+          <BigScore label="Value" value={stats.value} />
+        </div>
+        <p className="text-xs text-faint">{stats.count > 0 ? `From ${stats.count} ${stats.count === 1 ? "rating" : "ratings"}.` : "No ratings yet. Be the first."}</p>
+        {viewer ? (
+          <RatePlace businessId={truck.id} returnTo={returnTo} label="Rate this truck" />
+        ) : (
+          <Link href={`/auth/sign-in?next=${encodeURIComponent(returnTo)}`} className="text-sm font-semibold text-sky">Sign in to rate</Link>
+        )}
+      </section>
+
+      <section id="menu" aria-labelledby="menu-h" className="flex scroll-mt-20 flex-col gap-3">
+        <h2 id="menu-h" className="text-xl font-bold">Menu</h2>
+        <MenuList items={menu} signedIn={!!viewer} returnTo={returnTo} ranks={ranks.items} />
+      </section>
+
+      <section aria-labelledby="catering-h" className="flex flex-col gap-1 rounded-2xl border border-line bg-surface p-4">
+        <h2 id="catering-h" className="font-bold">Catering</h2>
+        <p className="text-sm text-muted">
+          {truck.cateringAvailable
+            ? `${truck.name} books private events and catering. Reach out through their socials${truck.orderingUrl ? " or ordering page" : ""} to check dates.`
+            : "This truck hasn't said it takes catering bookings yet."}
         </p>
-      )}
+      </section>
     </article>
   );
 }

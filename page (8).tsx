@@ -1,223 +1,179 @@
+import Image from "next/image";
 import Link from "next/link";
+import { Suspense } from "react";
+import { ApprovedBadge } from "@/components/places/ApprovedBadge";
+import { KIND_TONE, KindIcon } from "@/components/places/KindIcon";
+import { NearMeButton } from "@/components/places/NearMeButton";
+import { LinkUpHere } from "@/components/linkups/LinkUpHere";
 import { ShareButton } from "@/components/share/ShareButton";
-import { notFound } from "next/navigation";
-import { MenuList } from "@/components/menu/MenuList";
-import { RankBadge } from "@/components/charts/RankBadge";
-import { ranksForBusiness } from "@/server/charts";
-import { RatePlace } from "@/components/ratings/RatePlace";
-import { DemoBadge } from "@/components/ui/DemoBadge";
+import { CityChips } from "@/components/charts/CityChips";
+import { TasteForm } from "@/components/groups/TasteForm";
 import { findCity } from "@/domain/map/map";
-import {
-  directionsUrl, formatTime, formatWindow, groupStopsByDay, postedAgo, SOURCE_LABEL, STOP_STATUS_LABEL, type StopState,
-} from "@/domain/trucks/trucks";
+import { EAT_SORTS, EAT_TYPES, KIND_LABEL, cuisineLabel, formatDistance, type EatSort, type EatType } from "@/domain/places/eat";
 import { getViewer } from "@/server/auth";
-import { getMenu, getPlaceStats } from "@/server/menus";
-import { getTruck, type TruckStop } from "@/server/trucks";
-import { followTruck, setNotify, unfollowTruck } from "../actions";
+import { EAT_PAGE, getCityCuisines, getPlacesNear } from "@/server/eat";
+import { getMyTaste } from "@/server/groups";
+import { getViewerCity } from "@/server/map";
 
-type Props = { params: Promise<{ slug: string }> };
+export const metadata = { title: "What Should I Eat?" };
 
-export async function generateMetadata({ params }: Props) {
-  const truck = await getTruck((await params).slug, null);
-  return { title: truck?.name ?? "Food truck", description: truck?.cuisine ? `${truck.name} · ${truck.cuisine}. Where it's parked and what to order.` : undefined };
-}
+const PHOTOS = new Set(["charlotte", "atlanta", "nashville", "houston", "phoenix", "dc", "brooklyn", "miami"]);
+const chip = (on: boolean) => `shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${on ? "bg-text text-ink" : "border border-line text-muted hover:text-text"}`;
 
-const STATE_STYLE: Record<StopState, string> = {
-  here_now: "bg-coral/15 text-coral",
-  later_today: "border border-sky/50 text-sky",
-  upcoming: "border border-line text-muted",
-  ended: "bg-surface-2 text-faint",
-  cancelled: "bg-danger/10 text-danger",
-};
+type Search = { searchParams: Promise<{ city?: string; lat?: string; lng?: string; type?: string; cuisine?: string; q?: string; open?: string; sort?: string; page?: string; saved?: string; closed?: string }> };
 
-function stopBadge(s: TruckStop): string {
-  if (s.status === "cancelled") return "CANCELLED";
-  if (s.status === "delayed") return s.state === "ended" ? "ENDED" : "DELAYED";
-  if (s.status === "sold_out") return s.state === "ended" ? "ENDED" : "SOLD OUT";
-  if (s.state === "here_now") return "HERE NOW";
-  if (s.state === "ended") return s.status === "closed" ? "CLOSED" : "ENDED";
-  return STOP_STATUS_LABEL[s.status].toUpperCase();
-}
-
-function BigScore({ label, value }: { label: string; value: number | null }) {
-  return (
-    <div className="flex flex-col items-center gap-1 rounded-2xl border border-line bg-surface p-3 text-center">
-      <span className="font-display text-3xl font-extrabold leading-none">{value != null ? <span className="vybe-text">{value.toFixed(1)}</span> : <span className="text-faint">–</span>}</span>
-      <span className="text-xs font-semibold text-muted">{label}</span>
-    </div>
-  );
-}
-
-export default async function TruckPage({ params }: Props) {
-  const { slug } = await params;
+export default async function WhatToEatPage({ searchParams }: Search) {
+  const sp = await searchParams;
   const viewer = await getViewer();
-  const truck = await getTruck(slug, viewer?.id ?? null);
-  if (!truck) notFound();
-  const [menu, stats, ranks] = await Promise.all([
-    getMenu(truck.id, viewer?.id ?? null),
-    getPlaceStats(truck.id),
-    truck.homeCitySlug ? ranksForBusiness(truck.id, truck.homeCitySlug, findCity(truck.homeCitySlug).name, true) : Promise.resolve({ place: null, items: {} }),
+  const city = findCity(await getViewerCity(viewer, sp.city));
+  const lat = sp.lat && Number.isFinite(Number(sp.lat)) ? Number(sp.lat) : null;
+  const lng = sp.lng && Number.isFinite(Number(sp.lng)) ? Number(sp.lng) : null;
+  const near = lat != null && lng != null;
+  const type = (EAT_TYPES.some((t) => t.key === sp.type) ? sp.type : "all") as EatType;
+  const taste = viewer ? await getMyTaste(viewer) : null;
+  const hasTaste = !!taste && (taste.likes.length > 0 || taste.dislikes.length > 0 || taste.dietary.length > 0);
+  const sort = (EAT_SORTS.some((s) => s.key === sp.sort) ? sp.sort : hasTaste ? "for_you" : "near") as EatSort;
+  const q = sp.q?.trim().slice(0, 60) || null;
+  const cuisine = sp.cuisine && /^[a-z0-9_ -]{2,30}$/.test(sp.cuisine) ? sp.cuisine : null;
+  const openNow = sp.open === "1";
+  const page = Math.max(1, Math.min(20, Number(sp.page) || 1));
+
+  const [rows, cuisines] = await Promise.all([
+    getPlacesNear({
+      city: city.slug, lat, lng, type, cuisine, q, openNow, sort, page,
+      likes: taste ? [...taste.likes, ...taste.dietary] : [], dislikes: [...(taste?.dislikes ?? []), ...(taste?.allergies ?? [])],
+    }),
+    getCityCuisines(city.slug),
   ]);
-  const now = new Date();
-  const returnTo = `/food-trucks/${truck.slug}`;
-  const groups = groupStopsByDay(truck.stops.filter((s) => s.state !== "ended" || now.getTime() - new Date(s.endAt).getTime() < 12 * 3_600_000), truck.timezone, now);
-  const hereStop = truck.stops.find((s) => s.state === "here_now");
-  const nextStop = truck.stops.find((s) => s.state === "later_today" || s.state === "upcoming");
-  const target = truck.live ? { lat: truck.live.lat, lng: truck.live.lng } : hereStop?.lat != null && hereStop.lng != null ? { lat: hereStop.lat, lng: hereStop.lng } : nextStop?.lat != null && nextStop.lng != null ? { lat: nextStop.lat, lng: nextStop.lng } : null;
-  const homeCity = truck.homeCitySlug ? findCity(truck.homeCitySlug) : null;
-  const hidden = (
-    <>
-      <input type="hidden" name="truck" value={truck.id} />
-      <input type="hidden" name="slug" value={truck.slug} />
-    </>
-  );
+  const hasMore = rows.length > EAT_PAGE;
+  const places = rows.slice(0, EAT_PAGE);
+
+  // Links keep every other filter as-is.
+  const href = (change: Record<string, string | null>) => {
+    const next = new URLSearchParams();
+    const cur: Record<string, string | null> = { city: city.slug, lat: sp.lat ?? null, lng: sp.lng ?? null, type: type === "all" ? null : type, cuisine, q, open: openNow ? "1" : null, sort: sp.sort ?? null, page: null };
+    for (const [k, v] of Object.entries({ ...cur, ...change })) if (v) next.set(k, v);
+    return `/eat?${next}`;
+  };
 
   return (
-    <article className="mx-auto flex w-full max-w-2xl flex-col gap-8">
-      <Link href="/food-trucks" className="text-sm font-semibold text-muted hover:text-text">← Food trucks</Link>
-
-      <header className="flex flex-col gap-4">
-        <div className="relative h-40 overflow-hidden rounded-[var(--radius-card)] border border-line sm:h-52">
-          {truck.photoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element -- truck photo from storage or demo path
-            <img src={truck.photoUrl} alt={`${truck.name} truck`} className="size-full object-cover" />
-          ) : (
-            <div aria-hidden className="vybe-gradient grid size-full place-items-center">
-              <span className="font-display text-6xl font-extrabold text-ink/80">{truck.name.slice(0, 1)}</span>
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-faint">
-            <span>Food truck</span>
-            {homeCity && <span>· {homeCity.name}, {homeCity.region}</span>}
-            {truck.isDemo && <DemoBadge label="Demo truck" />}
-          </div>
-          <h1 className="text-4xl font-extrabold">{truck.name}</h1>
-          {ranks.place && <div className="py-1"><RankBadge badge={ranks.place} /></div>}
-          {truck.cuisine && <p className="text-lg text-muted">{truck.cuisine}</p>}
-          {truck.description && <p className="max-w-prose text-muted">{truck.description}</p>}
-          <p className="text-xs text-faint">{truck.followers} {truck.followers === 1 ? "follower" : "followers"}</p>
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
+      <header className="relative isolate overflow-hidden rounded-[var(--radius-card)] border border-line">
+        {PHOTOS.has(city.slug) && <Image src={`/cities/${city.slug}.webp`} alt="" fill priority sizes="(min-width: 768px) 768px, 100vw" className="-z-10 object-cover" />}
+        <div className="bg-[linear-gradient(90deg,rgba(7,6,11,.92),rgba(7,6,11,.55))] p-5">
+          <h1 className="font-display text-3xl font-extrabold">What Should I Eat?</h1>
+          <p className="text-sm text-white/80">Every spot in {city.name}, rated on VYBR8 or not. The vybers decide who&rsquo;s best.</p>
+          <div className="mt-3"><Suspense><NearMeButton active={near} /></Suspense></div>
         </div>
       </header>
 
-      {truck.live && (
-        <section aria-label="Live now" className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-coral/60 bg-coral/10 p-4">
-          <p className="flex items-center gap-2 font-display text-xl font-extrabold text-coral">
-            <i aria-hidden className="size-2.5 animate-pulse rounded-full bg-coral" />
-            WE&rsquo;RE HERE until {formatTime(truck.live.expiresAt, truck.timezone)}
-          </p>
-          {truck.live.note && <p className="text-sm">{truck.live.note}</p>}
-          <p className="text-xs text-muted">Posted by the truck · {postedAgo(truck.live.startedAt, now, truck.timezone)}</p>
-          <a href={directionsUrl(truck.live.lat, truck.live.lng)} target="_blank" rel="noopener noreferrer" className="vybe-gradient inline-flex min-h-11 w-fit items-center rounded-full px-5 text-sm font-bold text-ink">Directions</a>
-        </section>
+      <CityChips current={city.slug} hrefFor={(c) => `/eat?city=${c}`} />
+
+      <form action="/eat" className="flex items-center gap-2 rounded-2xl border border-line bg-surface px-4 focus-within:border-coral/60">
+        <input type="hidden" name="city" value={city.slug} />
+        {near && <><input type="hidden" name="lat" value={sp.lat} /><input type="hidden" name="lng" value={sp.lng} /></>}
+        {type !== "all" && <input type="hidden" name="type" value={type} />}
+        <label htmlFor="eat-q" className="sr-only">Search places</label>
+        <input id="eat-q" name="q" defaultValue={q ?? ""} placeholder="Search a place by name" className="min-h-12 flex-1 bg-transparent text-base placeholder:text-muted focus:outline-none" />
+        <button className="rounded-full bg-surface-2 px-4 py-2 text-sm font-bold">Search</button>
+      </form>
+
+      <nav aria-label="Kind of place" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+        {EAT_TYPES.map((t) => <Link key={t.key} href={href({ type: t.key === "all" ? null : t.key, cuisine: null })} className={chip(t.key === type)}>{t.label}</Link>)}
+        <Link href={href({ open: openNow ? null : "1" })} className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${openNow ? "bg-mint text-ink" : "border border-mint/50 text-mint"}`}>Open now</Link>
+      </nav>
+
+      {cuisines.length > 0 && (
+        <nav aria-label="Cuisine" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+          {cuisine && <Link href={href({ cuisine: null })} className={chip(false)}>All cuisines ×</Link>}
+          {cuisines.map((c) => <Link key={c} href={href({ cuisine: c === cuisine ? null : c })} className={chip(c === cuisine)}>{cuisineLabel(c)}</Link>)}
+        </nav>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {viewer ? (
-          truck.following ? (
-            <>
-              <form action={unfollowTruck}>
-                {hidden}
-                <button className="min-h-11 rounded-full border border-line px-5 text-sm font-bold hover:bg-surface-2">Following · Unfollow</button>
-              </form>
-              <form action={setNotify}>
-                {hidden}
-                <input type="hidden" name="notify" value={truck.notify ? "0" : "1"} />
-                <button aria-pressed={truck.notify} className={`min-h-11 rounded-full px-5 text-sm font-bold ${truck.notify ? "border border-sky/60 text-sky" : "border border-line text-muted"}`}>
-                  {truck.notify ? "Notify me: on" : "Notify me: off"}
-                </button>
-              </form>
-            </>
-          ) : (
-            <form action={followTruck}>
-              {hidden}
-              <button className="vybe-gradient min-h-11 rounded-full px-6 text-sm font-bold text-ink">Follow and save</button>
-            </form>
-          )
-        ) : (
-          <Link href={`/auth/sign-in?next=${encodeURIComponent(returnTo)}`} className="vybe-gradient inline-flex min-h-11 items-center rounded-full px-6 text-sm font-bold text-ink">Sign in to follow</Link>
-        )}
-        {target && !truck.live && (
-          <a href={directionsUrl(target.lat, target.lng)} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded-full border border-line px-5 text-sm font-bold hover:bg-surface-2">Directions</a>
-        )}
-        <ShareButton path={`/food-trucks/${truck.slug}`} title={truck.name} text={`${truck.name} food truck on VYBR8`} />
-        {truck.orderingUrl && (
-          <a href={truck.orderingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded-full border border-line px-5 text-sm font-bold hover:bg-surface-2">Order ahead</a>
-        )}
-        {truck.canEdit && (
-          <Link href="/food-truck/dashboard" className="inline-flex min-h-11 items-center rounded-full px-4 text-sm font-bold text-coral hover:bg-surface-2">Manage truck</Link>
-        )}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex gap-1 rounded-full border border-line p-1 text-sm font-bold">
+          {EAT_SORTS.map((s) => (
+            <Link key={s.key} href={href({ sort: s.key })} aria-current={s.key === sort ? "true" : undefined}
+              className={`rounded-full px-3 py-1.5 ${s.key === sort ? "bg-text text-ink" : "text-muted hover:text-text"}`}>{s.label}</Link>
+          ))}
+        </div>
+        <p className="text-xs text-faint">{near ? "Distance from you" : `Distance from downtown ${city.name.split(",")[0]}`}</p>
       </div>
-      {viewer && truck.following && <p className="-mt-6 text-xs text-faint">With Notify me on, you&rsquo;ll get an alert when {truck.name} posts a new stop.</p>}
-      {(truck.socials.length > 0 || truck.website) && (
-        <ul aria-label="Socials" className="-mt-4 flex flex-wrap gap-x-4 gap-y-1 text-sm font-semibold">
-          {truck.socials.map((s) => <li key={s.url}><a href={s.url} target="_blank" rel="noopener noreferrer" className="text-sky hover:underline">{s.label}</a></li>)}
-          {truck.website && /^https:\/\//.test(truck.website) && <li><a href={truck.website} target="_blank" rel="noopener noreferrer" className="text-sky hover:underline">Website</a></li>}
+
+      {/* Tastes: what makes "For you" work */}
+      {viewer ? (
+        <details className="rounded-2xl border border-lavender/40 bg-surface p-4" open={!hasTaste && sort === "for_you"}>
+          <summary className="cursor-pointer list-none text-sm font-bold text-lavender">
+            {hasTaste ? `Your tastes: ${[...taste!.likes].slice(0, 4).join(", ") || "saved"} · edit` : "Tell VYBR8 what you like and your matches show first →"}
+          </summary>
+          <div className="mt-3"><TasteForm taste={taste!} returnTo={`/eat?city=${city.slug}&sort=for_you`} /></div>
+        </details>
+      ) : (
+        <Link href="/auth/sign-in?next=/eat" className="rounded-2xl border border-lavender/40 bg-surface p-4 text-sm font-bold text-lavender">Sign in and add your tastes to see your matches first →</Link>
+      )}
+      {sp.closed && <p role="status" className="text-sm text-mint">Marked permanently closed. It&rsquo;s gone from VYBR8.</p>}
+      {sp.saved && <p role="status" className="text-sm text-mint">Tastes saved. Your matches are at the top.</p>}
+
+      {places.length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-line p-8 text-center text-muted">
+          No places match that yet.{" "}
+          <Link href={`/eat?city=${city.slug}`} className="font-semibold text-sky">Clear filters</Link> or{" "}
+          <Link href="/places/new" className="font-semibold text-sky">add a place</Link>.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {places.map((p) => {
+            const dist = formatDistance(p.meters);
+            return (
+              <li key={p.businessId} className="relative">
+                <Link href={`/venue/${p.slug}`} className="flex items-center gap-4 rounded-[var(--radius-card)] border border-line bg-surface p-4 pb-14 hover:bg-surface-2 sm:pb-4 sm:pr-32">
+                  {p.logoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- business logo
+                    <img src={p.logoUrl} alt="" className="size-14 shrink-0 rounded-2xl object-cover" />
+                  ) : (
+                    <span className={`grid size-14 shrink-0 place-items-center rounded-2xl ${KIND_TONE[p.kind] ?? "bg-orange text-ink"}`}><KindIcon kind={p.kind} className="size-6" /></span>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="flex flex-wrap items-center gap-2">
+                      <span className="truncate font-bold">{p.name}</span>
+                      {p.approved && <ApprovedBadge small />}
+                      {p.match > 0 && <span className="rounded-full bg-lavender/20 px-2 py-0.5 text-[11px] font-bold text-lavender">Matches your tastes</span>}
+                    </p>
+                    <p className="truncate text-sm text-muted">
+                      {[p.branch, KIND_LABEL[p.kind] ?? p.kind, ...p.cuisines.slice(0, 2).map(cuisineLabel), p.priceLevel ? "$".repeat(p.priceLevel) : null].filter(Boolean).join(" · ")}
+                    </p>
+                    <p className="mt-0.5 flex flex-wrap gap-x-3 text-xs">
+                      {dist && <span className="text-text tabular-nums">{dist}</span>}
+                      {p.openNow === true && <span className="font-bold text-mint">Open now</span>}
+                      {p.openNow === false && <span className="text-faint">Closed now</span>}
+                      {p.ratings > 0 && p.rating != null
+                        ? <span className="font-bold text-orange tabular-nums">{p.rating.toFixed(1)} on VYBR8 · {p.ratings} {p.ratings === 1 ? "rating" : "ratings"}</span>
+                        : <span className="text-faint">No VYBR8 ratings yet</span>}
+                    </p>
+                  </div>
+                  <span aria-hidden className="hidden text-xl text-faint sm:hidden">›</span>
+                </Link>
+                {/* Quick actions: send it to friends or start a Link Up without leaving the list */}
+                <div className="absolute bottom-3 left-[5.5rem] flex gap-2 sm:bottom-auto sm:left-auto sm:right-4 sm:top-1/2 sm:-translate-y-1/2">
+                  <LinkUpHere venueSlug={p.slug} signedIn={!!viewer} isAdult={viewer?.isAdult ?? false} compact />
+                  <ShareButton path={`/venue/${p.slug}`} title={p.branch ? `${p.name} · ${p.branch}` : p.name} text={`Pull up? ${p.name} on VYBR8`} compact />
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
 
-      <section aria-labelledby="where-h" className="flex flex-col gap-4">
-        <h2 id="where-h" className="text-xl font-extrabold tracking-wide">WHERE&rsquo;S THE TRUCK?</h2>
-        {groups.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-line p-5 text-sm text-muted">No stops posted for the next two weeks. Follow to hear when they post one.</p>
-        ) : (
-          groups.map((g) => (
-            <div key={g.day} className="flex flex-col gap-2">
-              <h3 className="text-xs font-extrabold uppercase tracking-[0.18em] text-faint">{g.label}</h3>
-              <ul className="flex flex-col divide-y divide-line rounded-2xl border border-line bg-surface">
-                {g.stops.map((s) => (
-                  <li key={s.id} className={`flex flex-col gap-1.5 p-4 ${s.state === "ended" || s.state === "cancelled" ? "opacity-70" : ""}`}>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-display font-bold tabular-nums">{formatWindow(s.startAt, s.endAt, s.timezone)}</p>
-                      <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-extrabold tracking-wide ${s.status === "delayed" || s.status === "sold_out" ? "bg-orange/15 text-orange" : STATE_STYLE[s.state]}`}>{stopBadge(s)}</span>
-                    </div>
-                    <p className={`font-semibold ${s.status === "cancelled" ? "line-through" : ""}`}>{s.locationName}</p>
-                    {s.eventName && <p className="text-sm text-lavender">{s.eventName}</p>}
-                    {s.address && <p className="text-sm text-faint">{s.address}</p>}
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint">
-                      <span>{SOURCE_LABEL[s.source]}{s.verifiedAt ? " · verified" : ""} · updated {postedAgo(s.updatedAt, now, s.timezone)}</span>
-                      {s.lat != null && s.lng != null && s.state !== "ended" && s.state !== "cancelled" && (
-                        <a href={directionsUrl(s.lat, s.lng)} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 items-center font-semibold text-sky">Directions</a>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))
-        )}
-        <p className="text-xs text-faint">Locations come from the truck and always show when they were posted. Plans change, so check the truck&rsquo;s socials before you go.</p>
-      </section>
+      {(page > 1 || hasMore) && (
+        <nav aria-label="More places" className="flex justify-between">
+          {page > 1 ? <Link href={`${href({})}&page=${page - 1}`} className="rounded-full border border-line px-5 py-2 text-sm font-bold">← Previous</Link> : <span />}
+          {hasMore && <Link href={`${href({})}&page=${page + 1}`} className="vybe-gradient rounded-full px-5 py-2 text-sm font-bold text-ink">More places →</Link>}
+        </nav>
+      )}
 
-      <section aria-labelledby="scores-h" className="flex flex-col gap-3">
-        <h2 id="scores-h" className="text-xl font-bold">Ratings</h2>
-        <div className="grid grid-cols-3 gap-2">
-          <BigScore label="Truck" value={stats.overall} />
-          <BigScore label="Service Vybe" value={stats.serviceVybe} />
-          <BigScore label="Value" value={stats.value} />
-        </div>
-        <p className="text-xs text-faint">{stats.count > 0 ? `From ${stats.count} ${stats.count === 1 ? "rating" : "ratings"}.` : "No ratings yet. Be the first."}</p>
-        {viewer ? (
-          <RatePlace businessId={truck.id} returnTo={returnTo} label="Rate this truck" />
-        ) : (
-          <Link href={`/auth/sign-in?next=${encodeURIComponent(returnTo)}`} className="text-sm font-semibold text-sky">Sign in to rate</Link>
-        )}
-      </section>
-
-      <section id="menu" aria-labelledby="menu-h" className="flex scroll-mt-20 flex-col gap-3">
-        <h2 id="menu-h" className="text-xl font-bold">Menu</h2>
-        <MenuList items={menu} signedIn={!!viewer} returnTo={returnTo} ranks={ranks.items} />
-      </section>
-
-      <section aria-labelledby="catering-h" className="flex flex-col gap-1 rounded-2xl border border-line bg-surface p-4">
-        <h2 id="catering-h" className="font-bold">Catering</h2>
-        <p className="text-sm text-muted">
-          {truck.cateringAvailable
-            ? `${truck.name} books private events and catering. Reach out through their socials${truck.orderingUrl ? " or ordering page" : ""} to check dates.`
-            : "This truck hasn't said it takes catering bookings yet."}
-        </p>
-      </section>
-    </article>
+      <p className="text-center text-xs text-faint">
+        Don&rsquo;t see a spot? <Link href="/places/new" className="underline">Add it</Link>. Some place info © OpenStreetMap contributors.
+      </p>
+    </div>
   );
 }

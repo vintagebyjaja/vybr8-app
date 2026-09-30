@@ -1,179 +1,161 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Suspense } from "react";
-import { ApprovedBadge } from "@/components/places/ApprovedBadge";
-import { KIND_TONE, KindIcon } from "@/components/places/KindIcon";
-import { NearMeButton } from "@/components/places/NearMeButton";
-import { LinkUpHere } from "@/components/linkups/LinkUpHere";
-import { ShareButton } from "@/components/share/ShareButton";
-import { CityChips } from "@/components/charts/CityChips";
-import { TasteForm } from "@/components/groups/TasteForm";
-import { findCity } from "@/domain/map/map";
-import { EAT_SORTS, EAT_TYPES, KIND_LABEL, cuisineLabel, formatDistance, type EatSort, type EatType } from "@/domain/places/eat";
+import { VybeWave } from "@/components/brand/VybeWave";
+import { VybeMap } from "@/components/map/VybeMap";
+import { VybeStatus } from "@/components/map/VybeStatus";
+import { CITIES } from "@/domain/map/map";
+import { getMapData, getViewerCity } from "@/server/map";
+import { FeedTabs } from "@/components/posts/FeedTabs";
+import { PostButton } from "@/components/posts/PostButton";
+import { PostCard } from "@/components/posts/PostCard";
 import { getViewer } from "@/server/auth";
-import { EAT_PAGE, getCityCuisines, getPlacesNear } from "@/server/eat";
-import { getMyTaste } from "@/server/groups";
-import { getViewerCity } from "@/server/map";
+import { getFeed } from "@/server/posts";
+import { birthdayStatus, formatMonthDay, parseYmd, todayIn } from "@/domain/birthday/birthday";
+import { ActiveVybeCard } from "@/components/home/ActiveVybeCard";
+import { QuickTiles } from "@/components/home/QuickTiles";
+import { WhatToEatCard } from "@/components/home/WhatToEatCard";
+import { findCity } from "@/domain/map/map";
+import { ACTIVITY_LEVELS, DAY_PARTS } from "@/domain/health/health";
+import { getActiveVybe, getRhythm, nowFor } from "@/server/health";
 
-export const metadata = { title: "What Should I Eat?" };
+const INTENTS = [
+  { href: "/explore?intent=eat", title: "Eat", line: "Find the best actual dish near you", tone: "text-orange" },
+  { href: "/explore?intent=drink", title: "Drink", line: "Cocktails, happy hour, lounges", tone: "text-coral" },
+  { href: "/vybe/new", title: "Link Up", line: "Plan a night your whole crew can enjoy", tone: "text-sky" },
+];
 
-const PHOTOS = new Set(["charlotte", "atlanta", "nashville", "houston", "phoenix", "dc", "brooklyn", "miami"]);
-const chip = (on: boolean) => `shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${on ? "bg-text text-ink" : "border border-line text-muted hover:text-text"}`;
+const FEEDS = [
+  { key: "following", label: "Following" },
+  { key: "creators", label: "Creators" },
+] as const;
 
-type Search = { searchParams: Promise<{ city?: string; lat?: string; lng?: string; type?: string; cuisine?: string; q?: string; open?: string; sort?: string; page?: string; saved?: string; closed?: string }> };
+type Search = { searchParams: Promise<{ feed?: string; before?: string; city?: string }> };
 
-export default async function WhatToEatPage({ searchParams }: Search) {
-  const sp = await searchParams;
+export default async function HomePage({ searchParams }: Search) {
   const viewer = await getViewer();
-  const city = findCity(await getViewerCity(viewer, sp.city));
-  const lat = sp.lat && Number.isFinite(Number(sp.lat)) ? Number(sp.lat) : null;
-  const lng = sp.lng && Number.isFinite(Number(sp.lng)) ? Number(sp.lng) : null;
-  const near = lat != null && lng != null;
-  const type = (EAT_TYPES.some((t) => t.key === sp.type) ? sp.type : "all") as EatType;
-  const taste = viewer ? await getMyTaste(viewer) : null;
-  const hasTaste = !!taste && (taste.likes.length > 0 || taste.dislikes.length > 0 || taste.dietary.length > 0);
-  const sort = (EAT_SORTS.some((s) => s.key === sp.sort) ? sp.sort : hasTaste ? "for_you" : "near") as EatSort;
-  const q = sp.q?.trim().slice(0, 60) || null;
-  const cuisine = sp.cuisine && /^[a-z0-9_ -]{2,30}$/.test(sp.cuisine) ? sp.cuisine : null;
-  const openNow = sp.open === "1";
-  const page = Math.max(1, Math.min(20, Number(sp.page) || 1));
-
-  const [rows, cuisines] = await Promise.all([
-    getPlacesNear({
-      city: city.slug, lat, lng, type, cuisine, q, openNow, sort, page,
-      likes: taste ? [...taste.likes, ...taste.dietary] : [], dislikes: [...(taste?.dislikes ?? []), ...(taste?.allergies ?? [])],
-    }),
-    getCityCuisines(city.slug),
+  const { feed: feedParam, before, city: cityParam } = await searchParams;
+  const feed = feedParam === "creators" || !viewer ? "creators" : "following";
+  const birth = viewer?.birthdate ? parseYmd(viewer.birthdate) : null;
+  const bday = birth ? birthdayStatus(birth, todayIn()) : null;
+  const citySlug = viewer ? await getViewerCity(viewer, cityParam) : null;
+  const tz = findCity(citySlug).timezone;
+  const rhythm = viewer ? await getRhythm(viewer.id) : null;
+  const now = rhythm ? nowFor(rhythm, tz) : null;
+  const [page, map, active] = await Promise.all([
+    getFeed(feed === "following" && viewer ? { kind: "following", viewerId: viewer.id } : { kind: "creators" }, before),
+    viewer && citySlug ? getMapData(citySlug, viewer) : Promise.resolve(null),
+    viewer && now ? getActiveVybe(viewer.id, now.day, tz, 8) : Promise.resolve(null),
   ]);
-  const hasMore = rows.length > EAT_PAGE;
-  const places = rows.slice(0, EAT_PAGE);
-
-  // Links keep every other filter as-is.
-  const href = (change: Record<string, string | null>) => {
-    const next = new URLSearchParams();
-    const cur: Record<string, string | null> = { city: city.slug, lat: sp.lat ?? null, lng: sp.lng ?? null, type: type === "all" ? null : type, cuisine, q, open: openNow ? "1" : null, sort: sp.sort ?? null, page: null };
-    for (const [k, v] of Object.entries({ ...cur, ...change })) if (v) next.set(k, v);
-    return `/eat?${next}`;
-  };
+  const ci = active?.checkin ?? null;
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
-      <header className="relative isolate overflow-hidden rounded-[var(--radius-card)] border border-line">
-        {PHOTOS.has(city.slug) && <Image src={`/cities/${city.slug}.webp`} alt="" fill priority sizes="(min-width: 768px) 768px, 100vw" className="-z-10 object-cover" />}
-        <div className="bg-[linear-gradient(90deg,rgba(7,6,11,.92),rgba(7,6,11,.55))] p-5">
-          <h1 className="font-display text-3xl font-extrabold">What Should I Eat?</h1>
-          <p className="text-sm text-white/80">Every spot in {city.name}, rated on VYBR8 or not. The vybers decide who&rsquo;s best.</p>
-          <div className="mt-3"><Suspense><NearMeButton active={near} /></Suspense></div>
-        </div>
-      </header>
-
-      <CityChips current={city.slug} hrefFor={(c) => `/eat?city=${c}`} />
-
-      <form action="/eat" className="flex items-center gap-2 rounded-2xl border border-line bg-surface px-4 focus-within:border-coral/60">
-        <input type="hidden" name="city" value={city.slug} />
-        {near && <><input type="hidden" name="lat" value={sp.lat} /><input type="hidden" name="lng" value={sp.lng} /></>}
-        {type !== "all" && <input type="hidden" name="type" value={type} />}
-        <label htmlFor="eat-q" className="sr-only">Search places</label>
-        <input id="eat-q" name="q" defaultValue={q ?? ""} placeholder="Search a place by name" className="min-h-12 flex-1 bg-transparent text-base placeholder:text-muted focus:outline-none" />
-        <button className="rounded-full bg-surface-2 px-4 py-2 text-sm font-bold">Search</button>
-      </form>
-
-      <nav aria-label="Kind of place" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
-        {EAT_TYPES.map((t) => <Link key={t.key} href={href({ type: t.key === "all" ? null : t.key, cuisine: null })} className={chip(t.key === type)}>{t.label}</Link>)}
-        <Link href={href({ open: openNow ? null : "1" })} className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${openNow ? "bg-mint text-ink" : "border border-mint/50 text-mint"}`}>Open now</Link>
-      </nav>
-
-      {cuisines.length > 0 && (
-        <nav aria-label="Cuisine" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
-          {cuisine && <Link href={href({ cuisine: null })} className={chip(false)}>All cuisines ×</Link>}
-          {cuisines.map((c) => <Link key={c} href={href({ cuisine: c === cuisine ? null : c })} className={chip(c === cuisine)}>{cuisineLabel(c)}</Link>)}
-        </nav>
-      )}
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex gap-1 rounded-full border border-line p-1 text-sm font-bold">
-          {EAT_SORTS.map((s) => (
-            <Link key={s.key} href={href({ sort: s.key })} aria-current={s.key === sort ? "true" : undefined}
-              className={`rounded-full px-3 py-1.5 ${s.key === sort ? "bg-text text-ink" : "text-muted hover:text-text"}`}>{s.label}</Link>
-          ))}
-        </div>
-        <p className="text-xs text-faint">{near ? "Distance from you" : `Distance from downtown ${city.name.split(",")[0]}`}</p>
-      </div>
-
-      {/* Tastes: what makes "For you" work */}
+    <div className="flex flex-col gap-6">
       {viewer ? (
-        <details className="rounded-2xl border border-lavender/40 bg-surface p-4" open={!hasTaste && sort === "for_you"}>
-          <summary className="cursor-pointer list-none text-sm font-bold text-lavender">
-            {hasTaste ? `Your tastes: ${[...taste!.likes].slice(0, 4).join(", ") || "saved"} · edit` : "Tell VYBR8 what you like and your matches show first →"}
-          </summary>
-          <div className="mt-3"><TasteForm taste={taste!} returnTo={`/eat?city=${city.slug}&sort=for_you`} /></div>
-        </details>
+        <section aria-label="Start here" className="flex flex-col gap-4">
+          <div className="flex justify-center md:hidden">
+            <Image src="/brand-wordmark.webp" alt="VYBR8. Eat, drink, link up." width={600} height={200} priority className="h-auto w-44 mix-blend-lighten" />
+          </div>
+          <form action="/search" className="flex items-center gap-2 rounded-2xl border border-line bg-surface px-4 focus-within:border-coral/60">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-5 shrink-0 text-muted" aria-hidden><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+            <label htmlFor="home-q" className="sr-only">Search VYBR8</label>
+            <input id="home-q" name="q" placeholder="What are we eating today?" className="min-h-14 flex-1 bg-transparent text-base placeholder:text-muted focus:outline-none" />
+            <Link href="/search" aria-label="Search filters" className="grid size-10 place-items-center rounded-xl bg-surface-2 text-muted hover:text-text">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-5" aria-hidden><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>
+            </Link>
+          </form>
+          <QuickTiles tiles={[
+            { href: "#nearby", label: "Near Me", tone: "text-coral", icon: "pin" },
+            { href: "/vybe", label: "Link Ups", tone: "text-sky", icon: "people" },
+            { href: "/charts", label: "Charts", tone: "text-orange", icon: "trophy" },
+            { href: "/food-trucks", label: "Food Trucks", tone: "text-mint", icon: "truck" },
+          ]} />
+          <ActiveVybeCard sleepMin={active?.sleep?.minutes ?? null} goal={active?.sleepGoal ?? 480} wake={active?.sleep?.wakeTime ?? null} dayLabel={ACTIVITY_LEVELS.find((l) => l.key === ci?.level)?.label ?? null}
+            greeting={now ? DAY_PARTS.find((x) => x.key === now.part)?.greeting ?? null : null} due={now && active ? !active.checkins[now.part] : false} />
+          <WhatToEatCard href={`/eat?city=${findCity(citySlug).slug}`} city={findCity(citySlug).slug} cityName={findCity(citySlug).name} />
+          <QuickTiles tiles={[
+            { href: "/charts?tab=food", label: "Big Back", tone: "text-orange", icon: "plate" },
+            { href: "/charts?tab=drinks", label: "Liquid Lover", tone: "text-coral", icon: "glass" },
+            { href: "/birthday", label: "Birthday Perks", tone: "text-lavender", icon: "cake" },
+            { href: "/places/new", label: "Add a Place", tone: "text-sky", icon: "plus" },
+          ]} />
+        </section>
       ) : (
-        <Link href="/auth/sign-in?next=/eat" className="rounded-2xl border border-lavender/40 bg-surface p-4 text-sm font-bold text-lavender">Sign in and add your tastes to see your matches first →</Link>
+        <section className="flex flex-col gap-5">
+          <Image src="/brand-wordmark.webp" alt="VYBR8. Eat, drink, link up." width={600} height={200} priority className="h-auto w-56 mix-blend-lighten md:hidden" />
+          <h1 className="text-4xl font-extrabold leading-tight md:text-5xl">
+            What&rsquo;s your <span className="vybe-text">vybe</span> tonight?
+          </h1>
+          <p className="max-w-prose text-muted">
+            For the Big Backs and the Liquid Lovers. Find the best actual plate or pour near you, see what your people are eating and drinking, and link up somewhere everyone can order.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/auth/sign-up" className="vybe-gradient inline-flex min-h-11 items-center rounded-full px-6 text-sm font-bold text-ink">Find My Vybe</Link>
+            <Link href="/auth/sign-in" className="inline-flex min-h-11 items-center rounded-full border border-line px-6 text-sm font-bold hover:bg-surface-2">Sign in</Link>
+          </div>
+        </section>
       )}
-      {sp.closed && <p role="status" className="text-sm text-mint">Marked permanently closed. It&rsquo;s gone from VYBR8.</p>}
-      {sp.saved && <p role="status" className="text-sm text-mint">Tastes saved. Your matches are at the top.</p>}
 
-      {places.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-line p-8 text-center text-muted">
-          No places match that yet.{" "}
-          <Link href={`/eat?city=${city.slug}`} className="font-semibold text-sky">Clear filters</Link> or{" "}
-          <Link href="/places/new" className="font-semibold text-sky">add a place</Link>.
-        </p>
+      {viewer && map ? (
+        <section id="nearby" aria-label="Nearby" className="flex scroll-mt-4 flex-col gap-4">
+          <div className="flex items-end justify-between gap-3">
+            <h2 className="font-display text-2xl font-extrabold">Nearby right now</h2>
+            <PostButton />
+          </div>
+          <VybeMap data={map} cities={CITIES.map((c) => ({ slug: c.slug, name: c.name }))} mapboxToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN || null} />
+          <VybeStatus city={map.city.slug} mine={map.myStatus} canDrink={viewer.is21Plus} />
+        </section>
       ) : (
-        <ul className="flex flex-col gap-3">
-          {places.map((p) => {
-            const dist = formatDistance(p.meters);
-            return (
-              <li key={p.businessId} className="relative">
-                <Link href={`/venue/${p.slug}`} className="flex items-center gap-4 rounded-[var(--radius-card)] border border-line bg-surface p-4 pb-14 hover:bg-surface-2 sm:pb-4 sm:pr-32">
-                  {p.logoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- business logo
-                    <img src={p.logoUrl} alt="" className="size-14 shrink-0 rounded-2xl object-cover" />
-                  ) : (
-                    <span className={`grid size-14 shrink-0 place-items-center rounded-2xl ${KIND_TONE[p.kind] ?? "bg-orange text-ink"}`}><KindIcon kind={p.kind} className="size-6" /></span>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-2">
-                      <span className="truncate font-bold">{p.name}</span>
-                      {p.approved && <ApprovedBadge small />}
-                      {p.match > 0 && <span className="rounded-full bg-lavender/20 px-2 py-0.5 text-[11px] font-bold text-lavender">Matches your tastes</span>}
-                    </p>
-                    <p className="truncate text-sm text-muted">
-                      {[p.branch, KIND_LABEL[p.kind] ?? p.kind, ...p.cuisines.slice(0, 2).map(cuisineLabel), p.priceLevel ? "$".repeat(p.priceLevel) : null].filter(Boolean).join(" · ")}
-                    </p>
-                    <p className="mt-0.5 flex flex-wrap gap-x-3 text-xs">
-                      {dist && <span className="text-text tabular-nums">{dist}</span>}
-                      {p.openNow === true && <span className="font-bold text-mint">Open now</span>}
-                      {p.openNow === false && <span className="text-faint">Closed now</span>}
-                      {p.ratings > 0 && p.rating != null
-                        ? <span className="font-bold text-orange tabular-nums">{p.rating.toFixed(1)} on VYBR8 · {p.ratings} {p.ratings === 1 ? "rating" : "ratings"}</span>
-                        : <span className="text-faint">No VYBR8 ratings yet</span>}
-                    </p>
-                  </div>
-                  <span aria-hidden className="hidden text-xl text-faint sm:hidden">›</span>
-                </Link>
-                {/* Quick actions: send it to friends or start a Link Up without leaving the list */}
-                <div className="absolute bottom-3 left-[5.5rem] flex gap-2 sm:bottom-auto sm:left-auto sm:right-4 sm:top-1/2 sm:-translate-y-1/2">
-                  <LinkUpHere venueSlug={p.slug} signedIn={!!viewer} isAdult={viewer?.isAdult ?? false} compact />
-                  <ShareButton path={`/venue/${p.slug}`} title={p.branch ? `${p.name} · ${p.branch}` : p.name} text={`Pull up? ${p.name} on VYBR8`} compact />
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        <VybeWave />
       )}
 
-      {(page > 1 || hasMore) && (
-        <nav aria-label="More places" className="flex justify-between">
-          {page > 1 ? <Link href={`${href({})}&page=${page - 1}`} className="rounded-full border border-line px-5 py-2 text-sm font-bold">← Previous</Link> : <span />}
-          {hasMore && <Link href={`${href({})}&page=${page + 1}`} className="vybe-gradient rounded-full px-5 py-2 text-sm font-bold text-ink">More places →</Link>}
-        </nav>
+      {bday && bday.kind !== "later" && (
+        <Link href="/birthday" className="vybe-ring flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] p-5 hover:bg-surface-2">
+          <span>
+            <span className="block font-display text-xl font-extrabold">
+              {bday.kind === "today" ? "Happy birthday!" : <>Your birthday is in <span className="vybe-text">{bday.days} {bday.days === 1 ? "day" : "days"}</span></>}
+            </span>
+            <span className="text-sm text-muted">{bday.kind === "today" ? "Your birthday perks are ready." : `${formatMonthDay(bday.date)} · see every place with free food, drinks and discounts.`}</span>
+          </span>
+          <span className="text-sm font-bold text-sky">Birthday Perks →</span>
+        </Link>
       )}
 
-      <p className="text-center text-xs text-faint">
-        Don&rsquo;t see a spot? <Link href="/places/new" className="underline">Add it</Link>. Some place info © OpenStreetMap contributors.
-      </p>
+
+      {!viewer && (
+        <section aria-label="Start with what you want" className="grid gap-3 sm:grid-cols-3">
+          {INTENTS.map((i) => (
+            <Link key={i.title} href={i.href} className="rounded-[var(--radius-card)] border border-line bg-surface p-5 transition hover:border-coral/50 hover:bg-surface-2">
+              <p className={`font-display text-2xl font-bold ${i.tone}`}>{i.title}</p>
+              <p className="mt-1 text-sm text-muted">{i.line}</p>
+            </Link>
+          ))}
+        </section>
+      )}
+
+      <section aria-labelledby="timeline-h" className="mx-auto flex w-full max-w-xl flex-col gap-4">
+        <h2 id="timeline-h" className="text-xl font-bold">{viewer ? "Your timeline" : "Fresh from VYBR8 creators"}</h2>
+        {viewer && <FeedTabs tabs={FEEDS} active={feed} base="/" />}
+        {page.posts.length === 0 ? (
+          <div className="rounded-[var(--radius-card)] border border-dashed border-line p-6 text-center text-sm text-muted">
+            {feed === "following" ? (
+              <>Follow creators and add friends to fill your timeline. <Link href="/explore" className="font-semibold text-sky">Find creators on Explore</Link></>
+            ) : (
+              <>No creator posts yet.</>
+            )}
+          </div>
+        ) : (
+          <ul className="flex flex-col gap-5">
+            {page.posts.map((p, i) => (
+              <li key={p.id}><PostCard post={p} signedIn={!!viewer} priority={i === 0} /></li>
+            ))}
+          </ul>
+        )}
+        {page.nextCursor && (
+          <Link href={`/?feed=${feed}&before=${encodeURIComponent(page.nextCursor)}`} className="self-center rounded-full border border-line px-5 py-2.5 text-sm font-bold hover:bg-surface-2">
+            Load more
+          </Link>
+        )}
+      </section>
     </div>
   );
 }
