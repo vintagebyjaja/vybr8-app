@@ -30,7 +30,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${sora.variable} ${manrope.variable}`}>
-      <body className="min-h-dvh">{children}</body>
+      <body className="min-h-dvh pt-[env(safe-area-inset-top)]">{children}</body>
     </html>
   );
 }

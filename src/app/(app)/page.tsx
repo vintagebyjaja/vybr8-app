@@ -15,7 +15,7 @@ import { ActiveVybeCard } from "@/components/home/ActiveVybeCard";
 import { QuickTiles } from "@/components/home/QuickTiles";
 import { WhatToEatCard } from "@/components/home/WhatToEatCard";
 import { findCity } from "@/domain/map/map";
-import { recommendationsFor, versusAverage, ymdIn } from "@/domain/health/health";
+import { ACTIVITY_LEVELS, activityScore, dayAdvice, ymdIn } from "@/domain/health/health";
 import { getActiveVybe } from "@/server/health";
 
 const INTENTS = [
@@ -44,10 +44,10 @@ export default async function HomePage({ searchParams }: Search) {
     viewer && citySlug ? getMapData(citySlug, viewer) : Promise.resolve(null),
     viewer ? getActiveVybe(viewer.id, ymdIn(tz), tz, 8) : Promise.resolve(null),
   ]);
-  const steps = active?.today?.steps ?? null;
-  const badge = active ? versusAverage(steps, active.history.slice(0, -1).map((h) => h.steps)) : null;
-  const dayType = active ? recommendationsFor(steps, active.goal, active.today?.activeMinutes ?? null).dayType : "custom";
-  const heroPhoto = map?.venues.find((v) => v.photo && !v.photo.isAlcoholic)?.photo?.src ?? "/demo/plate-wings.webp";
+  const ci = active?.checkin ?? null;
+  const dayType = active
+    ? dayAdvice({ sleepMin: active.sleep?.minutes ?? null, sleepGoal: active.sleepGoal, quality: active.sleep?.quality ?? null, level: ci?.level ?? null, score: activityScore(ci?.level ?? null, ci?.stepsBand ?? null, ci?.miles ?? null) }).dayType
+    : "custom";
 
   return (
     <div className="flex flex-col gap-6">
@@ -70,8 +70,8 @@ export default async function HomePage({ searchParams }: Search) {
             { href: "/charts", label: "Charts", tone: "text-orange", icon: "trophy" },
             { href: "/food-trucks", label: "Food Trucks", tone: "text-mint", icon: "truck" },
           ]} />
-          <ActiveVybeCard steps={steps} goal={active?.goal ?? 10000} badge={badge} />
-          <WhatToEatCard href={`/health/plan?type=${dayType}`} photo={heroPhoto} />
+          <ActiveVybeCard sleepMin={active?.sleep?.minutes ?? null} goal={active?.sleepGoal ?? 480} wake={active?.sleep?.wakeTime ?? null} dayLabel={ACTIVITY_LEVELS.find((l) => l.key === ci?.level)?.label ?? null} />
+          <WhatToEatCard href={`/health/plan?type=${dayType}`} city={findCity(citySlug).slug} cityName={findCity(citySlug).name} />
           <QuickTiles tiles={[
             { href: "/charts?tab=food", label: "Big Back", tone: "text-orange", icon: "plate" },
             { href: "/charts?tab=drinks", label: "Liquid Lover", tone: "text-coral", icon: "glass" },

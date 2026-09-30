@@ -93,3 +93,81 @@ export function formatClock(t: string): string {
   const hh = Number(h);
   return `${((hh + 11) % 12) + 1}:${m} ${hh < 12 ? "AM" : "PM"}`;
 }
+
+// ── Sleep & activity check-ins (no health apps needed) ────────────────
+
+export const DEFAULT_SLEEP_GOAL_MIN = 480;
+
+export const ACTIVITY_LEVELS = [
+  { key: "very_active", label: "Very active", line: "Workout, sports, long walk or run", tone: "coral" },
+  { key: "active", label: "Active", line: "On my feet a lot, walked around", tone: "orange" },
+  { key: "light", label: "Light", line: "Some walking, mostly easy", tone: "sky" },
+  { key: "sitting", label: "Mostly sitting", line: "Desk, driving, classes", tone: "lavender" },
+  { key: "gaming", label: "Gaming / screens", line: "Games, TV, scrolling", tone: "lavender" },
+  { key: "rest", label: "Rest day", line: "Recovering, sick or lazy on purpose", tone: "mint" },
+] as const;
+export type ActivityLevel = (typeof ACTIVITY_LEVELS)[number]["key"];
+
+export const ACTIVITY_OPTIONS = [
+  { key: "walk", label: "Walked" }, { key: "gym", label: "Gym" }, { key: "run", label: "Ran" }, { key: "sports", label: "Played sports" },
+  { key: "dance", label: "Danced / went out" }, { key: "on_feet_work", label: "Worked on my feet" }, { key: "chores", label: "Chores / errands" },
+  { key: "desk_work", label: "Desk work / school" }, { key: "gaming", label: "Gaming" }, { key: "tv", label: "TV / movies" }, { key: "driving", label: "Driving" },
+] as const;
+
+export const STEP_BANDS = [
+  { key: "under_3k", label: "Under 3,000 steps" },
+  { key: "3k_7k", label: "3,000 – 7,000" },
+  { key: "7k_12k", label: "7,000 – 12,000" },
+  { key: "12k_plus", label: "12,000+" },
+] as const;
+export type StepBand = (typeof STEP_BANDS)[number]["key"];
+
+/** Minutes asleep from "HH:MM" bedtime to "HH:MM" wake time, crossing midnight when needed. */
+export function sleepMinutes(bed: string, wake: string): number {
+  const toMin = (t: string) => {
+    const [h = "0", m = "0"] = t.split(":");
+    return Number(h) * 60 + Number(m);
+  };
+  let d = toMin(wake) - toMin(bed);
+  if (d <= 0) d += 24 * 60;
+  return d;
+}
+
+export function formatDuration(min: number | null): string {
+  if (min == null) return "–";
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
+
+export const QUALITY_LABEL: Record<number, string> = { 1: "Exhausted", 2: "Tired", 3: "Okay", 4: "Rested", 5: "Great" };
+
+/** How active the day was, as a 0–3 score, from the check-in (steps band or miles override the level when given). */
+export function activityScore(level: ActivityLevel | null, band: StepBand | null, miles: number | null): number | null {
+  if (miles != null && miles > 0) return miles >= 6 ? 3 : miles >= 3 ? 2 : miles >= 1 ? 1 : 0;
+  if (band) return { under_3k: 0, "3k_7k": 1, "7k_12k": 2, "12k_plus": 3 }[band];
+  if (!level) return null;
+  return { very_active: 3, active: 2, light: 1, sitting: 0, gaming: 0, rest: 0 }[level];
+}
+
+/** Today's suggestions from sleep and activity. Neutral, practical, never a calorie trade. */
+export function dayAdvice(input: { sleepMin: number | null; sleepGoal: number; quality: number | null; level: ActivityLevel | null; score: number | null }): { dayType: DayType; recs: RecKey[]; line: string; sleepLine: string | null } {
+  const { sleepMin, sleepGoal, quality, level, score } = input;
+  const short = sleepMin != null && (sleepMin < sleepGoal - 60 || (quality != null && quality <= 2));
+  const rested = sleepMin != null && sleepMin >= sleepGoal - 30 && (quality == null || quality >= 3);
+  const sleepLine = sleepMin == null ? null
+    : short ? "Short night. Steady meals, protein and water help more than extra sugar or caffeine late in the day. Aim to wind down a little earlier tonight."
+    : rested ? "You're rested. Good day to go for that workout or a long walk to your next spot."
+    : "Close to your sleep goal. Keep bedtime steady tonight.";
+
+  if ((score ?? 0) >= 2 || level === "very_active") {
+    return { dayType: "high_energy", recs: ["protein", "carbs", "hydration", "nutrient"], line: "Big day. Refuel with protein and some carbs, and keep the water coming.", sleepLine };
+  }
+  if (short) {
+    return { dayType: "custom", recs: ["steady", "protein", "hydration", "fiber"], line: "Tired day. Steady energy beats a sugar crash: protein, fiber and water.", sleepLine };
+  }
+  if (level === "gaming" || level === "sitting" || level === "rest") {
+    return { dayType: "rest", recs: ["nutrient", "fiber", "hydration", "steady"], line: level === "gaming" ? "Screen day. Keep snacks lighter, drink water, and stretch between sessions." : "Easier day. Nutrient-dense plates and steady energy fit nicely.", sleepLine };
+  }
+  return { dayType: "custom", recs: ["protein", "steady", "nutrient", "hydration"], line: "Balanced day. Protein at each meal and colorful plates keep you going.", sleepLine };
+}

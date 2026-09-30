@@ -1,44 +1,44 @@
 import "server-only";
-import { addDays, DEFAULT_STEP_GOAL, mergeDay, ymdIn, type ActivityDay, type DayType } from "@/domain/health/health";
+import { addDays, DEFAULT_SLEEP_GOAL_MIN, ymdIn, type ActivityLevel, type DayType, type StepBand } from "@/domain/health/health";
 import { createClient } from "@/lib/supabase/server";
 import { getFeed } from "@/server/posts";
 
-type Row = { day: string; source: string; steps: number | null; active_calories: number | null; distance_m: number | null; active_minutes: number | null };
-const toDay = (r: Row): ActivityDay => ({ day: r.day, source: r.source, steps: r.steps, activeCalories: r.active_calories, distanceM: r.distance_m, activeMinutes: r.active_minutes });
+export type SleepLog = { day: string; bedTime: string; wakeTime: string; minutes: number; quality: number | null };
+export type CheckIn = { level: ActivityLevel; activities: string[]; stepsBand: StepBand | null; miles: number | null; note: string | null };
 
 export type ActiveVybe = {
   date: string;
-  today: ReturnType<typeof mergeDay>;
-  goal: number;
-  history: { day: string; steps: number | null }[]; // oldest → newest, ending at `date`
+  sleep: SleepLog | null;
+  checkin: CheckIn | null;
+  sleepGoal: number;
+  history: { day: string; sleepMin: number | null; level: ActivityLevel | null }[]; // oldest → newest, ending at `date`
   nutrition: { calories: number; protein: number; carbs: number; fat: number; meals: number; target: { calories: number; protein: number | null; carbs: number | null; fat: number | null } | null };
-  requested: string[];
 };
 
 /** Everything the Active Vybe screen shows for one day. Owner-only rows (RLS). */
 export async function getActiveVybe(userId: string, date: string, tz: string, historyDays = 30): Promise<ActiveVybe> {
   const supabase = await createClient();
   const from = addDays(date, -(historyDays - 1));
-  const [{ data: rows }, { data: goal }, { data: logs }, { data: targets }, { data: conns }] = await Promise.all([
-    supabase.from("activity_days").select("day, source, steps, active_calories, distance_m, active_minutes").eq("user_id", userId).gte("day", from).lte("day", date),
-    supabase.from("activity_goals").select("step_goal").eq("user_id", userId).maybeSingle(),
+  const [{ data: sleeps }, { data: checks }, { data: goal }, { data: logs }, { data: targets }] = await Promise.all([
+    supabase.from("sleep_logs").select("day, bed_time, wake_time, minutes, quality").eq("user_id", userId).gte("day", from).lte("day", date),
+    supabase.from("activity_checkins").select("day, level, activities, steps_band, miles, note").eq("user_id", userId).gte("day", from).lte("day", date),
+    supabase.from("activity_goals").select("sleep_goal_minutes").eq("user_id", userId).maybeSingle(),
     supabase.from("food_logs").select("calories, protein_g, carbs_g, fat_g, logged_at").eq("user_id", userId)
       .gte("logged_at", `${addDays(date, -1)}T00:00:00Z`).lte("logged_at", `${addDays(date, 1)}T23:59:59Z`),
     supabase.from("nutrition_targets").select("calories, protein_g, carbs_g, fat_g").eq("user_id", userId).maybeSingle(),
-    supabase.from("health_connections").select("provider, status").eq("user_id", userId),
   ]);
 
-  const byDay = new Map<string, ActivityDay[]>();
-  for (const r of (rows ?? []) as Row[]) {
-    const list = byDay.get(r.day) ?? [];
-    list.push(toDay(r));
-    byDay.set(r.day, list);
-  }
-  const history: { day: string; steps: number | null }[] = [];
+  type S = { day: string; bed_time: string; wake_time: string; minutes: number; quality: number | null };
+  type C = { day: string; level: ActivityLevel; activities: string[] | null; steps_band: StepBand | null; miles: number | string | null; note: string | null };
+  const sleepBy = new Map(((sleeps ?? []) as S[]).map((r) => [r.day, r] as const));
+  const checkBy = new Map(((checks ?? []) as C[]).map((r) => [r.day, r] as const));
+  const history: ActiveVybe["history"] = [];
   for (let i = historyDays - 1; i >= 0; i--) {
     const d = addDays(date, -i);
-    history.push({ day: d, steps: mergeDay(byDay.get(d) ?? [])?.steps ?? null });
+    history.push({ day: d, sleepMin: sleepBy.get(d)?.minutes ?? null, level: checkBy.get(d)?.level ?? null });
   }
+  const s = sleepBy.get(date);
+  const c = checkBy.get(date);
 
   type Log = { calories: number | null; protein_g: number | string | null; carbs_g: number | string | null; fat_g: number | string | null; logged_at: string };
   const todays = ((logs ?? []) as Log[]).filter((l) => ymdIn(tz, new Date(l.logged_at)) === date);
@@ -47,14 +47,14 @@ export async function getActiveVybe(userId: string, date: string, tz: string, hi
 
   return {
     date,
-    today: mergeDay(byDay.get(date) ?? []),
-    goal: (goal as { step_goal: number } | null)?.step_goal ?? DEFAULT_STEP_GOAL,
+    sleep: s ? { day: s.day, bedTime: s.bed_time.slice(0, 5), wakeTime: s.wake_time.slice(0, 5), minutes: s.minutes, quality: s.quality } : null,
+    checkin: c ? { level: c.level, activities: c.activities ?? [], stepsBand: c.steps_band, miles: c.miles == null ? null : Number(c.miles), note: c.note } : null,
+    sleepGoal: (goal as { sleep_goal_minutes: number } | null)?.sleep_goal_minutes ?? DEFAULT_SLEEP_GOAL_MIN,
     history,
     nutrition: {
       calories: sum("calories"), protein: sum("protein_g"), carbs: sum("carbs_g"), fat: sum("fat_g"), meals: todays.length,
       target: t?.calories ? { calories: t.calories, protein: t.protein_g, carbs: t.carbs_g, fat: t.fat_g } : null,
     },
-    requested: ((conns ?? []) as { provider: string; status: string }[]).map((c) => c.provider),
   };
 }
 

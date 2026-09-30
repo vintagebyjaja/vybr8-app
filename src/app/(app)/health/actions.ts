@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { HEALTH_APPS, isYmd, metersFromMiles } from "@/domain/health/health";
+import { ACTIVITY_LEVELS, ACTIVITY_OPTIONS, STEP_BANDS, isYmd, sleepMinutes, type ActivityLevel, type StepBand } from "@/domain/health/health";
 import { createClient } from "@/lib/supabase/server";
 import { requireViewer } from "@/server/auth";
 import { log } from "@/server/log";
@@ -11,49 +11,74 @@ import { log } from "@/server/log";
 const back = (path: string, params: Record<string, string>): never => {
   redirect(`${path}${path.includes("?") ? "&" : "?"}${new URLSearchParams(params)}`);
 };
-const optInt = (max: number) => z.preprocess((v) => (v === "" || v == null ? undefined : Number(String(v).replace(/,/g, ""))), z.number().int().min(0).max(max).optional());
 const optNum = (max: number) => z.preprocess((v) => (v === "" || v == null ? undefined : Number(v)), z.number().min(0).max(max).optional());
 
-export async function logActivity(form: FormData) {
+const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+
+export async function logSleep(form: FormData) {
   const viewer = await requireViewer("/health");
+  const date = String(form.get("date") ?? "");
   const p = z.object({
     date: z.string().refine((d) => isYmd(d)),
-    steps: optInt(150000), calories: optInt(10000), miles: optNum(180), minutes: optInt(1440),
+    bed: time, wake: time,
+    quality: z.preprocess((v) => (v === "" || v == null ? undefined : Number(v)), z.number().int().min(1).max(5).optional()),
   }).safeParse(Object.fromEntries(form));
-  const date = typeof form.get("date") === "string" ? String(form.get("date")) : "";
-  if (!p.success) back("/health", { date, e: "Check the numbers and try again." });
+  if (!p.success) back("/health", { date, e: "Add when you went to bed and when you woke up." });
   const d = p.data!;
+  const minutes = sleepMinutes(d.bed, d.wake);
+  if (minutes < 30 || minutes > 1080) back("/health", { date, e: "That's outside 30 minutes to 18 hours. Check the times." });
   const supabase = await createClient();
-  const { error } = await supabase.from("activity_days").upsert({
-    user_id: viewer.id, day: d.date, source: "manual",
-    steps: d.steps ?? null, active_calories: d.calories ?? null, distance_m: d.miles != null ? metersFromMiles(d.miles) : null, active_minutes: d.minutes ?? null,
-  }, { onConflict: "user_id,day,source" });
+  const { error } = await supabase.from("sleep_logs").upsert(
+    { user_id: viewer.id, day: d.date, bed_time: d.bed, wake_time: d.wake, minutes, quality: d.quality ?? null, updated_at: new Date().toISOString() },
+    { onConflict: "user_id,day" },
+  );
   if (error) {
-    log.warn("health.log_failed", { code: error.code });
-    back("/health", { date: d.date, e: "That didn't save. Try again." });
+    log.warn("health.sleep_failed", { code: error.code });
+    back("/health", { date, e: "That didn't save. Try again." });
   }
   revalidatePath("/health");
   revalidatePath("/");
-  back("/health", { date: d.date, saved: "1" });
+  back("/health", { date: d.date, saved: "sleep" });
 }
 
-export async function setStepGoal(form: FormData) {
+export async function checkIn(form: FormData) {
   const viewer = await requireViewer("/health");
-  const p = z.object({ goal: z.coerce.number().int().min(1000).max(50000) }).safeParse(Object.fromEntries(form));
-  if (!p.success) back("/health", { e: "Pick a goal between 1,000 and 50,000 steps." });
+  const date = String(form.get("date") ?? "");
+  const levels = ACTIVITY_LEVELS.map((l) => l.key) as [ActivityLevel, ...ActivityLevel[]];
+  const bands = STEP_BANDS.map((b) => b.key) as [StepBand, ...StepBand[]];
+  const optionKeys: string[] = ACTIVITY_OPTIONS.map((o) => o.key);
+  const p = z.object({
+    date: z.string().refine((d) => isYmd(d)),
+    level: z.enum(levels),
+    band: z.preprocess((v) => (v === "" ? undefined : v), z.enum(bands).optional()),
+    miles: optNum(100),
+    note: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().trim().max(200).optional()),
+  }).safeParse(Object.fromEntries(form));
+  if (!p.success) back("/health", { date, e: "Pick how your day went." });
+  const d = p.data!;
+  const activities = form.getAll("did").map(String).filter((a) => optionKeys.includes(a)).slice(0, 8);
   const supabase = await createClient();
-  await supabase.from("activity_goals").upsert({ user_id: viewer.id, step_goal: p.data!.goal, updated_at: new Date().toISOString() });
+  const { error } = await supabase.from("activity_checkins").upsert(
+    { user_id: viewer.id, day: d.date, level: d.level, activities, steps_band: d.band ?? null, miles: d.miles ?? null, note: d.note ?? null, updated_at: new Date().toISOString() },
+    { onConflict: "user_id,day" },
+  );
+  if (error) {
+    log.warn("health.checkin_failed", { code: error.code });
+    back("/health", { date, e: "That didn't save. Try again." });
+  }
   revalidatePath("/health");
   revalidatePath("/");
+  back("/health", { date: d.date, saved: "day" });
 }
 
-export async function requestHealthApp(form: FormData) {
+export async function setSleepGoal(form: FormData) {
   const viewer = await requireViewer("/health");
-  const provider = String(form.get("provider") ?? "");
-  if (!HEALTH_APPS.some((a) => a.key === provider)) return;
+  const p = z.object({ hours: z.coerce.number().min(4).max(12) }).safeParse(Object.fromEntries(form));
+  if (!p.success) back("/health", { e: "Pick a sleep goal between 4 and 12 hours." });
   const supabase = await createClient();
-  await supabase.from("health_connections").upsert({ user_id: viewer.id, provider }, { onConflict: "user_id,provider", ignoreDuplicates: true });
+  await supabase.from("activity_goals").upsert({ user_id: viewer.id, sleep_goal_minutes: Math.round(p.data!.hours * 60), updated_at: new Date().toISOString() });
   revalidatePath("/health");
+  revalidatePath("/");
 }
 
 // ── Your Vybe Plan ─────────────────────────────────────────────────────

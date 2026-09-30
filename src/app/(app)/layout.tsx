@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AlertsLink } from "@/components/nav/AlertsLink";
+import { BackButton } from "@/components/nav/BackButton";
 import { BottomNav } from "@/components/nav/BottomNav";
 import { MobileMoreNav } from "@/components/nav/MobileMoreNav";
 import { SideNav } from "@/components/nav/SideNav";
@@ -27,11 +28,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <DemoBadge label="Demo mode" /> Venues and people shown are fictional development data.
           </div>
         )}
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-end gap-2 px-4 pt-4 md:px-8">
+        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-2 px-4 pt-4 md:px-8">
+          <BackButton />
+          <div className="flex items-center gap-2">
           <Link href="/birthday" className="inline-flex min-h-11 items-center rounded-full border border-line bg-surface px-4 text-sm font-semibold hover:bg-surface-2">
             <span className="vybe-text">Birthday Perks</span>
           </Link>
           {viewer && <AlertsLink unread={unread} />}
+          </div>
         </div>
         <MobileMoreNav />
         <main id="main" className="mx-auto w-full max-w-5xl flex-1 px-4 pb-32 pt-4 md:px-8 md:pb-12">

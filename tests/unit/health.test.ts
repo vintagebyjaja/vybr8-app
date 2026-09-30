@@ -37,3 +37,28 @@ test("helpers", () => {
   assert.equal(formatClock("19:00"), "7:00 PM");
   assert.equal(formatClock("12:30"), "12:30 PM");
 });
+
+import { activityScore, dayAdvice, formatDuration, sleepMinutes } from "../../src/domain/health/health.ts";
+
+test("sleep crosses midnight", () => {
+  assert.equal(sleepMinutes("23:15", "07:05"), 470);
+  assert.equal(sleepMinutes("01:00", "09:30"), 510);
+  assert.equal(sleepMinutes("22:00", "22:00"), 1440);
+  assert.equal(formatDuration(470), "7h 50m");
+  assert.equal(formatDuration(480), "8h");
+});
+
+test("activity score: steps or miles beat the general level", () => {
+  assert.equal(activityScore("gaming", null, null), 0);
+  assert.equal(activityScore("sitting", "7k_12k", null), 2);
+  assert.equal(activityScore("light", null, 6.5), 3);
+  assert.equal(activityScore(null, null, null), null);
+});
+
+test("advice from sleep and activity", () => {
+  assert.equal(dayAdvice({ sleepMin: 480, sleepGoal: 480, quality: 4, level: "very_active", score: 3 }).dayType, "high_energy");
+  const tired = dayAdvice({ sleepMin: 300, sleepGoal: 480, quality: 2, level: "active", score: 1 });
+  assert.deepEqual(tired.recs.slice(0, 1), ["steady"]);
+  assert.match(tired.sleepLine!, /Short night/);
+  assert.equal(dayAdvice({ sleepMin: null, sleepGoal: 480, quality: null, level: "gaming", score: 0 }).dayType, "rest");
+});
