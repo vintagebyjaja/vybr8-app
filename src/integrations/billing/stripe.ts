@@ -31,18 +31,33 @@ export function stripeApi(secretKey: string) {
 }
 export type StripeApi = ReturnType<typeof stripeApi>;
 
+/**
+ * Stripe needs a tax code on each product (required when Managed Payments is on).
+ * txcd_10103000 = "Software as a service (SaaS) - personal use", which fits a VYBR8+ / MAX membership.
+ */
+export const TAX_CODE = "txcd_10103000";
+
+/** Makes sure the plan's product exists and has its tax code (older products are fixed in place). */
+async function ensureProduct(api: StripeApi, plan: PaidPlan): Promise<void> {
+  const id = productId(plan);
+  try {
+    const p = await api.get<{ tax_code?: string | { id?: string } | null }>(`products/${id}`);
+    const code = typeof p.tax_code === "string" ? p.tax_code : p.tax_code?.id;
+    if (code !== TAX_CODE) await api.post(`products/${id}`, { tax_code: TAX_CODE });
+  } catch (e) {
+    if (!(e instanceof StripeError && e.status === 404)) throw e;
+    await api.post("products", { id, name: PLAN_PRICES[plan].name, tax_code: TAX_CODE, metadata: { plan } });
+  }
+}
+
 /** Finds the price for a plan, creating the product and price the first time. */
 export async function ensurePrice(api: StripeApi, plan: PaidPlan, interval: Interval): Promise<string> {
+  await ensureProduct(api, plan);
   const key = lookupKey(plan, interval);
   const found = await api.get<{ data: { id: string }[] }>("prices", { lookup_keys: [key], active: true, limit: 1 });
   if (found.data[0]) return found.data[0].id;
 
   const info = PLAN_PRICES[plan];
-  try {
-    await api.post("products", { id: productId(plan), name: info.name, metadata: { plan } });
-  } catch (e) {
-    if (!(e instanceof StripeError && e.code === "resource_already_exists")) throw e;
-  }
   const price = await api.post<{ id: string }>("prices", {
     product: productId(plan), currency: "usd", unit_amount: info[interval], recurring: { interval },
     lookup_key: key, transfer_lookup_key: true, metadata: { plan, interval },
