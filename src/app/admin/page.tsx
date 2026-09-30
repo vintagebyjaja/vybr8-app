@@ -23,7 +23,7 @@ export default async function AdminPage() {
   }
 
   const supabase = await createClient();
-  const [{ data: places }, { data: claims }, { data: chefClaims }] = await Promise.all([
+  const [{ data: places }, { data: claims }, { data: chefClaims }, { count: openTickets }] = await Promise.all([
     supabase
       .from("businesses")
       .select("id, slug, name, branch_name, kind, website, source, created_at, submitter:profiles!businesses_created_by_fkey ( username ), locations:business_locations ( address_line1, city, region, latitude )")
@@ -40,6 +40,7 @@ export default async function AdminPage() {
       .select("id, proof_method, proof_code, links, document_path, note, created_at, chef:chef_profiles ( slug, professional_name ), claimant:profiles!chef_claims_claimant_id_fkey ( username )")
       .eq("status", "pending")
       .order("created_at"),
+    supabase.from("support_tickets").select("id", { count: "exact", head: true }).eq("status", "open"),
   ]);
 
   // Short-lived links to private proof documents.
@@ -52,7 +53,12 @@ export default async function AdminPage() {
   return (
     <main className="mx-auto flex max-w-4xl flex-col gap-10 px-4 py-10">
       <Link href="/" className="text-sm text-muted hover:text-text">← Back to VYBR8</Link>
-      <h1 className="text-3xl font-bold">Admin</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-3xl font-bold">Admin</h1>
+        <Link href="/admin/support" className="inline-flex min-h-11 items-center rounded-full border border-sky/60 px-5 text-sm font-bold text-sky hover:bg-sky/10">
+          Support inbox{openTickets ? ` (${openTickets} open)` : ""}
+        </Link>
+      </div>
 
       <section aria-labelledby="places" className="flex flex-col gap-3">
         <h2 id="places" className="text-lg font-bold">New places to review ({places?.length ?? 0})</h2>

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PhotoUpload } from "@/components/profile/PhotoUpload";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/server";
@@ -106,6 +107,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       </fieldset>
 
       <Button type="submit" className="self-start">Save changes</Button>
+      <p className="text-sm text-muted">Need a hand? <Link href="/help" className="font-semibold text-sky hover:underline">Help &amp; Support</Link></p>
     </form>
   );
 }

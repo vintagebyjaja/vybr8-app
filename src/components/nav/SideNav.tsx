@@ -53,7 +53,10 @@ export function SideNav() {
         <Link href="/birthday" className="text-muted hover:text-text">Birthday Perks</Link>
         <Link href="/pricing" className="text-muted hover:text-text">VYBR8 MAX</Link>
       </div>
-      <Link href="/team" className="text-xs font-semibold text-faint hover:text-muted">VYBR8 Team</Link>
+      <div className="flex gap-4">
+        <Link href="/help" className="text-xs font-semibold text-faint hover:text-muted">Help &amp; Support</Link>
+        <Link href="/team" className="text-xs font-semibold text-faint hover:text-muted">VYBR8 Team</Link>
+      </div>
       <p className="mt-auto text-xs tracking-[0.2em] text-faint">EAT • DRINK • LINK UP</p>
     </nav>
   );

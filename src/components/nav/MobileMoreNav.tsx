@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/places/new", label: "Add a place" },
   { href: "/pricing", label: "VYBR8 MAX" },
   { href: "/team", label: "VYBR8 Team" },
+  { href: "/help", label: "Help" },
 ];
 
 /** Phones: the extra destinations the desktop side rail lists, as a swipeable row under the top bar. */
