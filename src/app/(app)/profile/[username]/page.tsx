@@ -1,5 +1,7 @@
 import { Avatar } from "@/components/ui/Avatar";
 import Link from "next/link";
+import { TasteForm } from "@/components/groups/TasteForm";
+import { getMyTaste } from "@/server/groups";
 import { notFound } from "next/navigation";
 import { CreatorBadge, TeamBadge } from "@/components/posts/Badges";
 import { PostButton } from "@/components/posts/PostButton";
@@ -55,6 +57,16 @@ export default async function ProfilePage({ params }: Params) {
   const name = (profile.display_name as string | null) ?? (profile.username as string);
   const showTeamTools = isMe && isStaff;
   const pending = showTeamTools ? await getPendingApplications(3) : null;
+  const [taste, myLists] = isMe && viewer
+    ? await Promise.all([
+        getMyTaste(viewer),
+        supabase.from("place_lists").select("list, business:businesses ( slug, name, branch_name )").order("created_at", { ascending: false }).limit(60),
+      ])
+    : [null, { data: null }];
+  type ListRow = { list: "saved" | "never"; business: { slug: string; name: string; branch_name: string | null } | null };
+  const lists = ((myLists.data ?? []) as unknown as ListRow[]).filter((r) => r.business);
+  const savedPlaces = lists.filter((r) => r.list === "saved");
+  const neverPlaces = lists.filter((r) => r.list === "never");
 
   return (
     <article className="flex flex-col gap-8">
@@ -114,6 +126,56 @@ export default async function ProfilePage({ params }: Params) {
             ).map(([href, label], i) => (
               <Link key={href} href={href!} className={`inline-flex min-h-11 items-center rounded-full px-5 text-sm font-bold ${i === 0 ? "bg-mint text-ink" : "border border-line hover:bg-surface-2"}`}>{label}</Link>
             ))}
+          </div>
+        </section>
+      )}
+
+      {isMe && taste && (
+        <section id="tastes" aria-labelledby="tastes-h" className="flex scroll-mt-4 flex-col gap-3 rounded-[var(--radius-card)] border border-lavender/40 bg-surface p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 id="tastes-h" className="text-xl font-bold">My tastes</h2>
+            <Link href="/eat?sort=for_you" className="text-sm font-semibold text-lavender hover:underline">See what fits you →</Link>
+          </div>
+          <p className="text-sm text-muted">
+            {taste.likes.length || taste.allergies.length || taste.dietary.length
+              ? [taste.likes.length ? `Loves ${taste.likes.slice(0, 5).join(", ")}` : null, taste.dietary.length ? taste.dietary.join(", ") : null, taste.allergies.length ? `Allergic to ${taste.allergies.join(", ")}` : null].filter(Boolean).join(" · ")
+              : "Tell VYBR8 what you love, what you won't eat, your allergies and diet. Recommendations tune to you right away, and you can change them any time you try something new."}
+          </p>
+          <details open={!taste.likes.length && !taste.dislikes.length && !taste.allergies.length}>
+            <summary className="cursor-pointer list-none text-sm font-bold text-lavender">{taste.likes.length ? "Edit my tastes" : "Set my tastes"}</summary>
+            <div className="mt-3"><TasteForm taste={taste} returnTo={`/profile/${profile.username}#tastes`} /></div>
+          </details>
+          <p className="text-xs text-faint">Shared with people in your groups so they can plan your order. Allergies always come first in suggestions, but always confirm with the restaurant.</p>
+        </section>
+      )}
+
+      {isMe && (
+        <section aria-labelledby="lists-h" className="grid gap-4 sm:grid-cols-2">
+          <h2 id="lists-h" className="sr-only">My places</h2>
+          <div className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-line bg-surface p-5">
+            <p className="font-bold text-coral">♥ Saved places ({savedPlaces.length})</p>
+            {savedPlaces.length ? (
+              <ul className="flex flex-col divide-y divide-line text-sm">
+                {savedPlaces.slice(0, 12).map((r) => (
+                  <li key={r.business!.slug} className="py-1.5"><Link href={`/venue/${r.business!.slug}`} className="hover:underline">{r.business!.branch_name ? `${r.business!.name} · ${r.business!.branch_name}` : r.business!.name}</Link></li>
+                ))}
+              </ul>
+            ) : <p className="text-sm text-muted">Tap ♡ Save on any place to keep it here.</p>}
+            {savedPlaces.length > 12 && <Link href="/eat?list=saved" className="text-sm font-semibold text-sky">See all saved →</Link>}
+          </div>
+          <div className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-line bg-surface p-5">
+            <p className="font-bold text-muted">Never again ({neverPlaces.length})</p>
+            {neverPlaces.length ? (
+              <ul className="flex flex-col divide-y divide-line text-sm">
+                {neverPlaces.map((r) => (
+                  <li key={r.business!.slug} className="flex items-center justify-between gap-2 py-1.5">
+                    <Link href={`/venue/${r.business!.slug}`} className="truncate hover:underline">{r.business!.name}</Link>
+                    <span className="shrink-0 text-xs text-faint">hidden for you</span>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="text-sm text-muted">Had a bad experience? Mark a place Never again and it won&rsquo;t be recommended to you.</p>}
+            <p className="text-xs text-faint">Only you see these lists.</p>
           </div>
         </section>
       )}

@@ -8,11 +8,11 @@ import { getViewerCity } from "@/server/map";
 
 export const metadata = { title: "Start a Link Up" };
 
-type Props = { searchParams: Promise<{ venue?: string; city?: string }> };
+type Props = { searchParams: Promise<{ venue?: string; city?: string; who?: string }> };
 
 export default async function NewLinkupPage({ searchParams }: Props) {
   const viewer = await requireViewer("/vybe/new");
-  const { venue, city: cityParam } = await searchParams;
+  const { venue, city: cityParam, who } = await searchParams;
   const city = findCity(await getViewerCity(viewer, cityParam));
   const supabase = await createClient();
   const defaultVenue = await getPickedPlace({ slug: venue });
@@ -40,6 +40,7 @@ export default async function NewLinkupPage({ searchParams }: Props) {
         cities={CITIES.map((c) => ({ slug: c.slug, name: c.name }))}
         defaultCity={venueCity ?? city.slug}
         defaultVenue={defaultVenue}
+        defaultVisibility={who ?? null}
         canDrink={viewer.is21Plus}
         isAdult={viewer.isAdult}
         turns21On={!viewer.is21Plus && viewer.birthdate ? turns21(viewer.birthdate) : null}

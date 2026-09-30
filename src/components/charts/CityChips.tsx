@@ -4,7 +4,7 @@ import { CITIES } from "@/domain/map/map";
 /** City picker for charts: plain links, so it works without JavaScript and each city has its own shareable URL. */
 export function CityChips({ current, hrefFor }: { current: string; hrefFor: (city: string) => string }) {
   return (
-    <nav aria-label="City" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+    <nav aria-label="City" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {CITIES.map((c) => (
         <Link
           key={c.slug}

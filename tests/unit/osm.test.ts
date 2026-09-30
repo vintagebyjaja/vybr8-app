@@ -52,3 +52,14 @@ test("a city is split into small tiles", () => {
   assert.equal(t[0]!.south, 35.05);
   assert.equal(t[24]!.north, 35.4);
 });
+
+test("capped imports start downtown and with the most complete places", async () => {
+  const { tilesCenterOut, rowQuality } = await import("../../src/domain/places/osm.ts");
+  const order = tilesCenterOut(5);
+  assert.equal(order[0], 12, "the middle tile first");
+  assert.equal(order.length, 25);
+  assert.equal(new Set(order).size, 25);
+  assert.ok([0, 4, 20, 24].includes(order[24]!), "a corner last");
+  const bare = { ext: "n/1", name: "A", kind: "restaurant", lat: 0, lng: 0, address: null, postal: null, website: null, phone: null, brand: null, cuisines: [], hours: [] };
+  assert.ok(rowQuality({ ...bare, address: "1 Main St", hours: [{ weekday: 1, opens: "11:00", closes: "22:00" }] }) > rowQuality(bare));
+});

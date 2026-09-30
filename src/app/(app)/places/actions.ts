@@ -203,3 +203,51 @@ export async function reviewHours(form: FormData) {
   revalidatePath("/admin");
   redirect("/admin#hours-queue");
 }
+
+// ── Owner & cause badges (Black-owned, woman-owned, gives back…) ───────
+/** Owner claims or someone suggests a badge; the team verifies it (the team's own go live right away). */
+export async function claimBadge(form: FormData) {
+  const slug = String(form.get("slug") ?? "");
+  if (!/^[a-z0-9-]{1,80}$/.test(slug)) return;
+  await requireViewer(`/venue/${slug}`);
+  const p = z.object({ business: z.uuid(), badge: z.string().regex(/^[a-z_]{3,20}$/), evidence: optText(500) }).safeParse(Object.fromEntries(form));
+  if (!p.success) back(`/venue/${slug}`, { badge: "error" });
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("claim_place_badge", { p_business: p.data!.business, p_badge: p.data!.badge, p_evidence: p.data!.evidence ?? null });
+  if (error) {
+    log.warn("places.badge_failed", { code: error.code });
+    back(`/venue/${slug}`, { badge: "error" });
+  }
+  revalidatePath(`/venue/${slug}`);
+  revalidatePath("/eat");
+  redirect(`/venue/${slug}?badge=${String(data)}#badges-h`);
+}
+
+/** Team: verify or turn down a badge. */
+export async function reviewBadge(form: FormData) {
+  await requireStaff();
+  const p = z.object({ business: z.uuid(), badge: z.string().regex(/^[a-z_]{3,20}$/), approve: z.enum(["1", "0"]) }).safeParse(Object.fromEntries(form));
+  if (!p.success) return;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("review_place_badge", { p_business: p.data.business, p_badge: p.data.badge, p_approve: p.data.approve === "1" });
+  if (error) log.warn("places.review_badge_failed", { code: error.code });
+  revalidatePath("/admin");
+  revalidatePath("/eat");
+  redirect("/admin#badges");
+}
+
+// ── Saved & "Never again" ──────────────────────────────────────────────
+/** Save a place, mark it "Never again" (hidden from your recommendations; hosts and groups get a heads-up), or clear it. */
+export async function setPlaceList(form: FormData) {
+  const back2 = String(form.get("back") ?? "");
+  const to = /^\/(venue\/[a-z0-9-]{1,80}|profile\/[A-Za-z0-9_.-]{1,40}|eat)(\?[^\s]*)?$/.test(back2) ? back2 : "/eat";
+  await requireViewer(to);
+  const p = z.object({ business: z.uuid(), list: z.enum(["saved", "never", "clear"]), note: optText(200) }).safeParse(Object.fromEntries(form));
+  if (!p.success) return;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("set_place_list", { p_business: p.data.business, p_list: p.data.list === "clear" ? null : p.data.list, p_note: p.data.note ?? null });
+  if (error) log.warn("places.list_failed", { code: error.code });
+  revalidatePath("/eat");
+  revalidatePath(to.split("?")[0]!);
+  redirect(to);
+}

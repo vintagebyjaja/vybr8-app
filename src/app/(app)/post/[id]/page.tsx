@@ -1,4 +1,7 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { LinkUpHere } from "@/components/linkups/LinkUpHere";
+import { ShareButton } from "@/components/share/ShareButton";
 import { PostCard } from "@/components/posts/PostCard";
 import { Button } from "@/components/ui/Button";
 import { timeAgo } from "@/domain/posts/posts";
@@ -34,6 +37,11 @@ export default async function PostPage({ params, searchParams }: Params) {
   return (
     <div className="mx-auto flex max-w-xl flex-col gap-6">
       <PostCard post={post} signedIn={!!viewer} priority />
+      <div className="flex flex-wrap gap-2">
+        <ShareButton path={`/post/${post.id}`} title={post.business ? `This from ${post.business.name}` : "This on VYBR8"} text={post.business ? `Look at this from ${post.business.name} on VYBR8` : "Look at this on VYBR8"} />
+        {post.business && <LinkUpHere venueSlug={post.business.slug} signedIn={!!viewer} isAdult={viewer?.isAdult ?? false} />}
+        {post.business && <Link href={`/venue/${post.business.slug}`} className="inline-flex min-h-11 items-center rounded-full px-4 text-sm font-bold text-sky hover:bg-surface-2">See {post.business.name}</Link>}
+      </div>
 
       <section id="comments" aria-labelledby="comments-h" className="flex flex-col gap-3">
         <h2 id="comments-h" className="text-lg font-bold">Comments ({comments.length})</h2>

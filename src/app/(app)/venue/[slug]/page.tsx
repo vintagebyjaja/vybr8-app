@@ -4,6 +4,8 @@ import { openStatus, weekSchedule } from "@/domain/map/hours";
 import { notFound, redirect } from "next/navigation";
 import { PerkCard } from "@/components/birthday/PerkCard";
 import { PostButton } from "@/components/posts/PostButton";
+import { LinkUpHere } from "@/components/linkups/LinkUpHere";
+import { ShareButton } from "@/components/share/ShareButton";
 import { PostGrid } from "@/components/posts/PostGrid";
 import { DemoBadge } from "@/components/ui/DemoBadge";
 import { createClient } from "@/lib/supabase/server";
@@ -15,13 +17,14 @@ import { MenuList } from "@/components/menu/MenuList";
 import { RatePlace } from "@/components/ratings/RatePlace";
 import { ApprovedBadge } from "@/components/places/ApprovedBadge";
 import { placeTitle } from "@/domain/places/places";
-import { reportClosed, reviewClosure, setBrand, submitHours } from "@/app/(app)/places/actions";
+import { claimBadge, reportClosed, reviewClosure, setBrand, setPlaceList, submitHours } from "@/app/(app)/places/actions";
+import { PLACE_BADGES, badgeInfo } from "@/domain/places/badges";
 import { HoursEditor } from "@/components/places/HoursEditor";
 import { RankBadge } from "@/components/charts/RankBadge";
 import { findCity, localClock, type Hours } from "@/domain/map/map";
 import { ranksForBusiness } from "@/server/charts";
 
-type Params = { params: Promise<{ slug: string }>; searchParams: Promise<{ added?: string; closed?: string; hours?: string }> };
+type Params = { params: Promise<{ slug: string }>; searchParams: Promise<{ added?: string; closed?: string; hours?: string; badge?: string }> };
 
 const KIND_LABEL: Record<string, string> = {
   restaurant: "Restaurant", bar: "Bar", cocktail_lounge: "Cocktail lounge", lounge: "Lounge", cigar_lounge: "Cigar lounge",
@@ -46,7 +49,7 @@ export async function generateMetadata({ params }: Params) {
 
 export default async function VenuePage({ params, searchParams }: Params) {
   const { slug } = await params;
-  const { added, closed, hours: hoursMsg } = await searchParams;
+  const { added, closed, hours: hoursMsg, badge: badgeMsg } = await searchParams;
   const venue = await loadVenue(slug);
   if (!venue) notFound();
   const viewerP = getViewer();
@@ -85,11 +88,17 @@ export default async function VenuePage({ params, searchParams }: Params) {
     citySlug ? ranksForBusiness(venue.id as string, citySlug, findCity(citySlug).name) : Promise.resolve({ place: null, items: {} }),
   ]);
   if (venue.kind === "food_truck") redirect(`/food-trucks/${venue.slug}`);
-  const locations = (venue.locations ?? []) as { id: string; label: string | null; address_line1: string | null; city: string; region: string; postal_code: string | null; is_primary: boolean; timezone: string; hours: { weekday: number; opens_at: string; closes_at: string }[] | null }[];
+  const locations = (venue.locations ?? []) as { id: string; label: string | null; address_line1: string | null; city: string; city_slug: string | null; region: string; postal_code: string | null; is_primary: boolean; timezone: string; hours: { weekday: number; opens_at: string; closes_at: string }[] | null }[];
   const brand = (Array.isArray(venue.brand) ? venue.brand[0] : venue.brand) as { name: string } | null;
   const isStaff = !!viewer?.platformRoles.length;
   const { data: canEditRaw } = viewer && !isStaff ? await (await createClient()).rpc("can_edit_place", { p_business: venue.id }) : { data: null };
   const canEditHours = isStaff || canEditRaw === true;
+  const { data: badgeRows } = await (await createClient()).from("place_badges").select("badge, status, from_owner").eq("business_id", venue.id);
+  const badges = (badgeRows ?? []) as { badge: string; status: string; from_owner: boolean }[];
+  const verifiedBadges = badges.filter((b) => b.status === "verified");
+  const { data: myList } = viewer ? await (await createClient()).from("place_lists").select("list").eq("business_id", venue.id).maybeSingle() : { data: null };
+  const listed = (myList as { list: "saved" | "never" } | null)?.list ?? null;
+  const pendingBadges = badges.filter((b) => b.status === "pending");
   const primary = locations.find((l) => l.is_primary) ?? locations[0];
   const hours: Hours[] = (primary?.hours ?? []).map((h) => ({ weekday: h.weekday, opensAt: h.opens_at, closesAt: h.closes_at }));
   const status = primary ? openStatus(hours, primary.timezone) : null;
@@ -111,6 +120,13 @@ export default async function VenuePage({ params, searchParams }: Params) {
           <h1 className="text-4xl font-extrabold">{placeTitle(venue.name as string, venue.branch_name as string | null)}</h1>
           {venue.is_claimed && <ApprovedBadge />}
         </div>
+        {verifiedBadges.length > 0 && (
+          <ul className="flex flex-wrap gap-2" aria-label="Verified by VYBR8">
+            {verifiedBadges.map((b) => { const info = badgeInfo(b.badge); return info ? (
+              <li key={b.badge}><Link href={`/eat?city=${primary?.city_slug ?? ""}&badge=${b.badge}`} className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-bold ${info.tone}`}>{info.label} <span aria-hidden>✓</span></Link></li>
+            ) : null; })}
+          </ul>
+        )}
         {ranks.place && <div><RankBadge badge={ranks.place} /></div>}
         {primary && (
           <p className="text-sm text-muted">
@@ -136,6 +152,15 @@ export default async function VenuePage({ params, searchParams }: Params) {
             )}
           </div>
         )}
+        {listed === "never" && (
+          <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface p-3 text-sm">
+            <span>You marked this <b>Never again</b>. It&rsquo;s hidden from your recommendations, and your groups and Link Up hosts get a heads-up if plans land here.</span>
+            <form action={setPlaceList}>
+              <input type="hidden" name="business" value={venue.id as string} /><input type="hidden" name="back" value={`/venue/${venue.slug}`} /><input type="hidden" name="list" value="clear" />
+              <button className="rounded-full border border-line px-4 py-1.5 text-xs font-bold">Give it another chance</button>
+            </form>
+          </div>
+        )}
         {closed === "reported" && <p role="status" className="rounded-xl border border-sky/40 bg-sky/10 p-3 text-sm">Thanks for the heads up. Once a few people confirm, VYBR8 takes it down.</p>}
         {closed === "error" && <p role="alert" className="rounded-xl border border-danger/50 p-3 text-sm text-danger">That didn&rsquo;t go through. Try again.</p>}
         {venue.status === "pending" && (
@@ -151,6 +176,15 @@ export default async function VenuePage({ params, searchParams }: Params) {
         )}
         <div className="flex flex-wrap gap-3 pt-1">
           <PostButton href={viewer ? `/post/new?venue=${venue.slug}` : `/auth/sign-in?next=/post/new?venue=${venue.slug}`} label="Post your plate here" />
+          {venue.status === "active" && <LinkUpHere venueSlug={venue.slug as string} signedIn={!!viewer} isAdult={viewer?.isAdult ?? false} />}
+          {viewer && venue.status === "active" && listed !== "never" && (
+            <form action={setPlaceList}>
+              <input type="hidden" name="business" value={venue.id as string} /><input type="hidden" name="back" value={`/venue/${venue.slug}`} />
+              <input type="hidden" name="list" value={listed === "saved" ? "clear" : "saved"} />
+              <button className={`inline-flex min-h-11 items-center rounded-full px-5 text-sm font-bold ${listed === "saved" ? "bg-coral text-ink" : "border border-coral/50 text-coral hover:bg-coral/10"}`}>{listed === "saved" ? "♥ Saved" : "♡ Save"}</button>
+            </form>
+          )}
+          <ShareButton path={`/venue/${venue.slug}`} title={placeTitle(venue.name as string, venue.branch_name as string | null)} text={`Pull up? ${placeTitle(venue.name as string, venue.branch_name as string | null)} on VYBR8`} />
           {venue.website && (
             <a href={venue.website as string} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded-full border border-line px-5 text-sm font-bold hover:bg-surface-2">
               Website
@@ -255,6 +289,42 @@ export default async function VenuePage({ params, searchParams }: Params) {
         ))}
       </section>
 
+      {venue.status === "active" && (
+        <section aria-labelledby="badges-h" className="flex scroll-mt-4 flex-col gap-2">
+          <h2 id="badges-h" className="sr-only">Owner &amp; cause badges</h2>
+          {badgeMsg === "pending" && <p role="status" className="text-sm text-mint">Thanks! The VYBR8 Team verifies every badge before it shows.</p>}
+          {badgeMsg === "verified" && <p role="status" className="text-sm text-mint">Badge added and verified.</p>}
+          {badgeMsg === "already_verified" && <p role="status" className="text-sm text-muted">That badge is already verified here.</p>}
+          {badgeMsg === "error" && <p role="alert" className="text-sm text-danger">That didn&rsquo;t go through. Try again.</p>}
+          {pendingBadges.length > 0 && (canEditHours || isStaff) && (
+            <p className="text-xs text-faint">Waiting on the VYBR8 Team: {pendingBadges.map((b) => badgeInfo(b.badge)?.label).filter(Boolean).join(", ")}</p>
+          )}
+          {viewer ? (
+            <details className="max-w-xl rounded-2xl border border-line bg-surface p-4">
+              <summary className="cursor-pointer list-none text-sm font-bold text-orange">
+                {canEditHours && !isStaff ? "Is your business Black-owned, woman-owned or giving back? Add a badge" : "Black-owned, woman-owned or giving back? Suggest a badge"}
+              </summary>
+              <form action={claimBadge} className="mt-3 flex flex-col gap-3">
+                <input type="hidden" name="business" value={venue.id as string} /><input type="hidden" name="slug" value={venue.slug as string} />
+                <fieldset className="flex flex-wrap gap-2">
+                  <legend className="mb-2 text-sm font-semibold">Which applies?</legend>
+                  {PLACE_BADGES.filter((b) => !verifiedBadges.some((v) => v.badge === b.key)).map((b, i) => (
+                    <label key={b.key} className="cursor-pointer rounded-full border border-line px-3 py-1.5 text-sm font-semibold has-[:checked]:border-text has-[:checked]:bg-text has-[:checked]:text-ink">
+                      <input type="radio" name="badge" value={b.key} required defaultChecked={i === 0} className="sr-only" />{b.label}
+                    </label>
+                  ))}
+                </fieldset>
+                <input name="evidence" maxLength={500} placeholder={canEditHours ? "Anything that helps us verify (certification, website page, press)" : "How do you know? A link or a few words helps us verify"} className="min-h-11 rounded-xl border border-line bg-ink px-3 text-sm" />
+                <p className="text-xs text-faint">{isStaff ? "As the VYBR8 Team, your badge goes live right away." : "Every badge is checked by the VYBR8 Team before it shows. We never guess who owns a business."}</p>
+                <button className="vybe-gradient min-h-11 self-start rounded-full px-6 text-sm font-bold text-ink">{isStaff ? "Add verified badge" : canEditHours ? "Send for verification" : "Suggest this badge"}</button>
+              </form>
+            </details>
+          ) : (
+            <Link href={`/auth/sign-in?next=/venue/${venue.slug}`} className="text-sm font-semibold text-orange">Black-owned, woman-owned or giving back? Sign in to add a badge</Link>
+          )}
+        </section>
+      )}
+
       <section aria-labelledby="menu-h" className="flex flex-col gap-3">
         <h2 id="menu-h" className="text-xl font-bold">Menu &amp; VYBR8 scores</h2>
         {menu.length ? (
@@ -293,6 +363,18 @@ export default async function VenuePage({ params, searchParams }: Params) {
           empty={<>No one has posted from here yet. <Link href={`/post/new?venue=${venue.slug}`} className="font-semibold text-sky">Be the first</Link></>}
         />
       </section>
+
+      {viewer && venue.status === "active" && listed !== "never" && (
+        <details className="max-w-xl text-sm">
+          <summary className="cursor-pointer list-none font-semibold text-muted hover:text-text">Bad experience? Mark it Never again</summary>
+          <form action={setPlaceList} className="mt-2 flex flex-col gap-2 rounded-2xl border border-line bg-surface p-4">
+            <input type="hidden" name="business" value={venue.id as string} /><input type="hidden" name="back" value={`/venue/${venue.slug}`} /><input type="hidden" name="list" value="never" />
+            <p className="text-xs text-muted">It won&rsquo;t show in your recommendations anymore. If a group plan or Link Up you&rsquo;re in is here, the host or group gets a heads-up that you don&rsquo;t want to go back. Your reason stays private.</p>
+            <input name="note" maxLength={200} placeholder="What happened? (only you see this)" className="min-h-10 rounded-lg border border-line bg-ink px-3" />
+            <button className="self-start rounded-full border border-danger/60 px-4 py-2 font-bold text-danger">Never again</button>
+          </form>
+        </details>
+      )}
 
       {viewer && venue.status === "active" && (
         <form action={reportClosed} className="flex flex-wrap items-center gap-2 text-xs text-faint">

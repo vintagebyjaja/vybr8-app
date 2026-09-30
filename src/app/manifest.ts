@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "VYBR8",
     short_name: "VYBR8",
-    description: "Eat • Drink • Link Up",
+    description: "Eat • Drink • Live • Connect",
     start_url: "/",
     display: "standalone",
     orientation: "portrait",

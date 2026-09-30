@@ -171,3 +171,22 @@ export function toImportRow(e: OsmElement): ImportRow | null {
     hours: parseHours(t.opening_hours),
   };
 }
+
+/** Default cap on new places per city per import run, so a city starts curated instead of crowded. */
+export const DEFAULT_IMPORT_LIMIT = 250;
+
+/** Tile indexes ordered from the middle of the city outward, so a capped import fills downtown first. */
+export function tilesCenterOut(n = TILE_GRID): number[] {
+  const mid = (n - 1) / 2;
+  return Array.from({ length: n * n }, (_, i) => i)
+    .sort((a, b) => {
+      const da = (Math.floor(a / n) - mid) ** 2 + ((a % n) - mid) ** 2;
+      const db = (Math.floor(b / n) - mid) ** 2 + ((b % n) - mid) ** 2;
+      return da - db || a - b;
+    });
+}
+
+/** How complete a place's info is: address, hours, website, phone and cuisine first. */
+export function rowQuality(r: ImportRow): number {
+  return (r.address ? 3 : 0) + (r.hours.length ? 3 : 0) + (r.website ? 2 : 0) + (r.phone ? 1 : 0) + (r.cuisines.length ? 1 : 0);
+}

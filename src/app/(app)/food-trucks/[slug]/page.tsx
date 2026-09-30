@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ShareButton } from "@/components/share/ShareButton";
 import { notFound } from "next/navigation";
 import { MenuList } from "@/components/menu/MenuList";
 import { RankBadge } from "@/components/charts/RankBadge";
@@ -140,6 +141,7 @@ export default async function TruckPage({ params }: Props) {
         {target && !truck.live && (
           <a href={directionsUrl(target.lat, target.lng)} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded-full border border-line px-5 text-sm font-bold hover:bg-surface-2">Directions</a>
         )}
+        <ShareButton path={`/food-trucks/${truck.slug}`} title={truck.name} text={`${truck.name} food truck on VYBR8`} />
         {truck.orderingUrl && (
           <a href={truck.orderingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded-full border border-line px-5 text-sm font-bold hover:bg-surface-2">Order ahead</a>
         )}

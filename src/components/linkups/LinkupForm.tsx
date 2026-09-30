@@ -9,11 +9,13 @@ import { DRINKS_BY_DEFAULT, MAX_SPOTS, MIN_SPOTS, OCCASIONS, type Occasion } fro
 const input = "min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-text placeholder:text-faint focus:border-sky";
 
 export function LinkupForm({
-  cities, defaultCity, defaultVenue = null, canDrink, isAdult = true, turns21On = null, today,
+  cities, defaultCity, defaultVenue = null, defaultVisibility = null, canDrink, isAdult = true, turns21On = null, today,
 }: {
   cities: { slug: string; name: string }[];
   defaultCity: string;
   defaultVenue?: PickedPlace | null;
+  /** From "Link Up here": friends, public or invite_only. */
+  defaultVisibility?: string | null;
   canDrink: boolean;
   /** Under-18 hosts can only make friends-only or invite-only Link Ups. */
   isAdult?: boolean;
@@ -109,7 +111,7 @@ export function LinkupForm({
           { v: "invite_only", t: "Invite only", d: "Only people you invite" },
         ].map((o, i) => (
           <label key={o.v} className="cursor-pointer">
-            <input type="radio" name="visibility" value={o.v} defaultChecked={i === 0} className="peer sr-only" />
+            <input type="radio" name="visibility" value={o.v} defaultChecked={defaultVisibility && ["public", "friends", "invite_only"].includes(defaultVisibility) && (defaultVisibility !== "public" || isAdult) ? o.v === defaultVisibility : i === 0} className="peer sr-only" />
             <span className="flex h-full flex-col rounded-xl border border-line p-3 peer-checked:border-coral peer-checked:bg-surface-2 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-sky">
               <b className="text-sm">{o.t}</b><span className="text-xs text-muted">{o.d}</span>
             </span>

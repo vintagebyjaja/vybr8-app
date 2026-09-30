@@ -5,7 +5,8 @@ import { DemoBadge } from "@/components/ui/DemoBadge";
 import { CHEF_CLAIM_METHODS, CLAIM_METHODS, PLACE_KINDS, placeTitle } from "@/domain/places/places";
 import { createClient } from "@/lib/supabase/server";
 import { AuthorizationError, requireAdmin } from "@/server/auth";
-import { decideChefClaim, reviewClosure, reviewHours, reviewPlace } from "@/app/(app)/places/actions";
+import { decideChefClaim, reviewBadge, reviewClosure, reviewHours, reviewPlace } from "@/app/(app)/places/actions";
+import { badgeInfo } from "@/domain/places/badges";
 import { weekSchedule } from "@/domain/map/hours";
 import { approveClaim, rejectClaim } from "./actions";
 
@@ -24,7 +25,7 @@ export default async function AdminPage() {
   }
 
   const supabase = await createClient();
-  const [{ data: places }, { data: claims }, { data: chefClaims }, { count: openTickets }, { data: closures }, { data: hoursQ }] = await Promise.all([
+  const [{ data: places }, { data: claims }, { data: chefClaims }, { count: openTickets }, { data: closures }, { data: hoursQ }, { data: badgeQ }] = await Promise.all([
     supabase
       .from("businesses")
       .select("id, slug, name, branch_name, kind, website, source, created_at, submitter:profiles!businesses_created_by_fkey ( username ), locations:business_locations ( address_line1, city, region, latitude )")
@@ -44,7 +45,9 @@ export default async function AdminPage() {
     supabase.from("support_tickets").select("id", { count: "exact", head: true }).eq("status", "open"),
     supabase.rpc("closure_report_queue"),
     supabase.rpc("hours_suggestion_queue"),
+    supabase.rpc("badge_queue"),
   ]);
+  const badgeRows = (badgeQ ?? []) as { business_id: string; slug: string; name: string; branch_name: string | null; badge: string; from_owner: boolean; suggestions: number; evidence: string | null }[];
   type HourRow = { weekday: number; opens: string; closes: string };
   const hourRows = (hoursQ ?? []) as { id: string; slug: string; name: string; branch_name: string | null; hours: HourRow[]; note: string | null; username: string | null; created_at: string; current: HourRow[] }[];
   const weekText = (h: HourRow[]) => weekSchedule(h.map((x) => ({ weekday: x.weekday, opensAt: x.opens, closesAt: x.closes })))
@@ -70,6 +73,31 @@ export default async function AdminPage() {
           </Link>
         </div>
       </div>
+
+      <section id="badges" aria-labelledby="badges-q" className="flex flex-col gap-3">
+        <h2 id="badges-q" className="text-lg font-bold">Owner &amp; cause badges to verify ({badgeRows.length})</h2>
+        <p className="text-xs text-faint">Check with the owner, their website, a certification or press before verifying. When unsure, reach out to the business first.</p>
+        {badgeRows.length === 0 ? <p className="text-sm text-muted">None waiting.</p> : (
+          <ul className="flex flex-col gap-2">
+            {badgeRows.map((b) => (
+              <li key={`${b.business_id}-${b.badge}`} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-4">
+                <div className="min-w-0">
+                  <p className="font-bold"><Link href={`/venue/${b.slug}`} className="hover:underline">{placeTitle(b.name, b.branch_name)}</Link> · <span className="text-orange">{badgeInfo(b.badge)?.label ?? b.badge}</span></p>
+                  <p className="text-xs text-muted">{b.from_owner ? "Claimed by the owner" : `Suggested by ${b.suggestions} ${b.suggestions === 1 ? "person" : "people"}`}{b.evidence ? ` · “${b.evidence}”` : ""}</p>
+                </div>
+                <div className="flex gap-2">
+                  {[["1", "Verify", "border-mint/60 text-mint"], ["0", "Turn down", "border-line text-muted"]].map(([v, label, tone]) => (
+                    <form key={v} action={reviewBadge}>
+                      <input type="hidden" name="business" value={b.business_id} /><input type="hidden" name="badge" value={b.badge} /><input type="hidden" name="approve" value={v} />
+                      <button className={`min-h-10 rounded-full border px-4 text-sm font-bold ${tone}`}>{label}</button>
+                    </form>
+                  ))}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section id="hours-queue" aria-labelledby="hours-q" className="flex flex-col gap-3">
         <h2 id="hours-q" className="text-lg font-bold">Suggested hours ({hourRows.length})</h2>

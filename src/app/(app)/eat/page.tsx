@@ -4,9 +4,12 @@ import { Suspense } from "react";
 import { ApprovedBadge } from "@/components/places/ApprovedBadge";
 import { KIND_TONE, KindIcon } from "@/components/places/KindIcon";
 import { NearMeButton } from "@/components/places/NearMeButton";
+import { LinkUpHere } from "@/components/linkups/LinkUpHere";
+import { ShareButton } from "@/components/share/ShareButton";
 import { CityChips } from "@/components/charts/CityChips";
 import { TasteForm } from "@/components/groups/TasteForm";
 import { findCity } from "@/domain/map/map";
+import { PLACE_BADGES, badgeInfo, isPlaceBadge } from "@/domain/places/badges";
 import { EAT_SORTS, EAT_TYPES, KIND_LABEL, cuisineLabel, formatDistance, type EatSort, type EatType } from "@/domain/places/eat";
 import { getViewer } from "@/server/auth";
 import { EAT_PAGE, getCityCuisines, getPlacesNear } from "@/server/eat";
@@ -18,7 +21,7 @@ export const metadata = { title: "What Should I Eat?" };
 const PHOTOS = new Set(["charlotte", "atlanta", "nashville", "houston", "phoenix", "dc", "brooklyn", "miami"]);
 const chip = (on: boolean) => `shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${on ? "bg-text text-ink" : "border border-line text-muted hover:text-text"}`;
 
-type Search = { searchParams: Promise<{ city?: string; lat?: string; lng?: string; type?: string; cuisine?: string; q?: string; open?: string; sort?: string; page?: string; saved?: string; closed?: string }> };
+type Search = { searchParams: Promise<{ city?: string; lat?: string; lng?: string; type?: string; cuisine?: string; q?: string; open?: string; sort?: string; page?: string; saved?: string; closed?: string; badge?: string; list?: string }> };
 
 export default async function WhatToEatPage({ searchParams }: Search) {
   const sp = await searchParams;
@@ -35,10 +38,12 @@ export default async function WhatToEatPage({ searchParams }: Search) {
   const cuisine = sp.cuisine && /^[a-z0-9_ -]{2,30}$/.test(sp.cuisine) ? sp.cuisine : null;
   const openNow = sp.open === "1";
   const page = Math.max(1, Math.min(20, Number(sp.page) || 1));
+  const badge = isPlaceBadge(sp.badge) ? sp.badge : null;
+  const savedOnly = !!viewer && sp.list === "saved";
 
   const [rows, cuisines] = await Promise.all([
     getPlacesNear({
-      city: city.slug, lat, lng, type, cuisine, q, openNow, sort, page,
+      city: city.slug, lat, lng, type, cuisine, q, openNow, sort, page, badge, savedOnly,
       likes: taste ? [...taste.likes, ...taste.dietary] : [], dislikes: [...(taste?.dislikes ?? []), ...(taste?.allergies ?? [])],
     }),
     getCityCuisines(city.slug),
@@ -49,7 +54,7 @@ export default async function WhatToEatPage({ searchParams }: Search) {
   // Links keep every other filter as-is.
   const href = (change: Record<string, string | null>) => {
     const next = new URLSearchParams();
-    const cur: Record<string, string | null> = { city: city.slug, lat: sp.lat ?? null, lng: sp.lng ?? null, type: type === "all" ? null : type, cuisine, q, open: openNow ? "1" : null, sort: sp.sort ?? null, page: null };
+    const cur: Record<string, string | null> = { city: city.slug, lat: sp.lat ?? null, lng: sp.lng ?? null, type: type === "all" ? null : type, cuisine, q, open: openNow ? "1" : null, sort: sp.sort ?? null, badge, list: savedOnly ? "saved" : null, page: null };
     for (const [k, v] of Object.entries({ ...cur, ...change })) if (v) next.set(k, v);
     return `/eat?${next}`;
   };
@@ -76,13 +81,23 @@ export default async function WhatToEatPage({ searchParams }: Search) {
         <button className="rounded-full bg-surface-2 px-4 py-2 text-sm font-bold">Search</button>
       </form>
 
-      <nav aria-label="Kind of place" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+      <nav aria-label="Kind of place" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {EAT_TYPES.map((t) => <Link key={t.key} href={href({ type: t.key === "all" ? null : t.key, cuisine: null })} className={chip(t.key === type)}>{t.label}</Link>)}
+        {viewer && <Link href={href({ list: savedOnly ? null : "saved" })} className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${savedOnly ? "bg-coral text-ink" : "border border-coral/50 text-coral"}`}>♥ Saved</Link>}
         <Link href={href({ open: openNow ? null : "1" })} className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${openNow ? "bg-mint text-ink" : "border border-mint/50 text-mint"}`}>Open now</Link>
       </nav>
 
+      <nav aria-label="Owned by" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {PLACE_BADGES.map((b) => (
+          <Link key={b.key} href={href({ badge: badge === b.key ? null : b.key })} aria-current={badge === b.key ? "true" : undefined}
+            className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold ${badge === b.key ? `${b.tone} ring-2 ring-current` : b.key === "black_owned" ? b.tone : "border-line text-muted hover:text-text"}`}>
+            {b.label}{badge === b.key ? " ×" : ""}
+          </Link>
+        ))}
+      </nav>
+
       {cuisines.length > 0 && (
-        <nav aria-label="Cuisine" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+        <nav aria-label="Cuisine" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {cuisine && <Link href={href({ cuisine: null })} className={chip(false)}>All cuisines ×</Link>}
           {cuisines.map((c) => <Link key={c} href={href({ cuisine: c === cuisine ? null : c })} className={chip(c === cuisine)}>{cuisineLabel(c)}</Link>)}
         </nav>
@@ -95,7 +110,7 @@ export default async function WhatToEatPage({ searchParams }: Search) {
               className={`rounded-full px-3 py-1.5 ${s.key === sort ? "bg-text text-ink" : "text-muted hover:text-text"}`}>{s.label}</Link>
           ))}
         </div>
-        <p className="text-xs text-faint">{near ? "Distance from you" : `Distance from downtown ${city.name.split(",")[0]}`}</p>
+        <p className="text-xs text-faint">{viewer ? "Places you marked Never again are hidden. " : ""}{near ? "Distance from you" : `Distance from downtown ${city.name.split(",")[0]}`}</p>
       </div>
 
       {/* Tastes: what makes "For you" work */}
@@ -114,7 +129,7 @@ export default async function WhatToEatPage({ searchParams }: Search) {
 
       {places.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-line p-8 text-center text-muted">
-          No places match that yet.{" "}
+          {savedOnly ? "You haven't saved any places here yet. Tap ♥ Save on a place to keep it. " : badge ? `No verified ${badgeInfo(badge)?.label} places here yet. Know one? Open its page and suggest the badge. ` : "No places match that yet. "}
           <Link href={`/eat?city=${city.slug}`} className="font-semibold text-sky">Clear filters</Link> or{" "}
           <Link href="/places/new" className="font-semibold text-sky">add a place</Link>.
         </p>
@@ -123,8 +138,8 @@ export default async function WhatToEatPage({ searchParams }: Search) {
           {places.map((p) => {
             const dist = formatDistance(p.meters);
             return (
-              <li key={p.businessId}>
-                <Link href={`/venue/${p.slug}`} className="flex items-center gap-4 rounded-[var(--radius-card)] border border-line bg-surface p-4 hover:bg-surface-2">
+              <li key={p.businessId} className="relative">
+                <Link href={`/venue/${p.slug}`} className="flex items-center gap-4 rounded-[var(--radius-card)] border border-line bg-surface p-4 pb-14 hover:bg-surface-2 sm:pb-4 sm:pr-32">
                   {p.logoUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element -- business logo
                     <img src={p.logoUrl} alt="" className="size-14 shrink-0 rounded-2xl object-cover" />
@@ -135,7 +150,9 @@ export default async function WhatToEatPage({ searchParams }: Search) {
                     <p className="flex flex-wrap items-center gap-2">
                       <span className="truncate font-bold">{p.name}</span>
                       {p.approved && <ApprovedBadge small />}
+                      {p.saved && <span className="rounded-full bg-coral/20 px-2 py-0.5 text-[11px] font-bold text-coral">♥ Saved</span>}
                       {p.match > 0 && <span className="rounded-full bg-lavender/20 px-2 py-0.5 text-[11px] font-bold text-lavender">Matches your tastes</span>}
+                      {p.badges.map((k) => { const b = badgeInfo(k); return b ? <span key={k} className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${b.tone}`}>{b.label}</span> : null; })}
                     </p>
                     <p className="truncate text-sm text-muted">
                       {[p.branch, KIND_LABEL[p.kind] ?? p.kind, ...p.cuisines.slice(0, 2).map(cuisineLabel), p.priceLevel ? "$".repeat(p.priceLevel) : null].filter(Boolean).join(" · ")}
@@ -149,8 +166,13 @@ export default async function WhatToEatPage({ searchParams }: Search) {
                         : <span className="text-faint">No VYBR8 ratings yet</span>}
                     </p>
                   </div>
-                  <span aria-hidden className="text-xl text-faint">›</span>
+                  <span aria-hidden className="hidden text-xl text-faint sm:hidden">›</span>
                 </Link>
+                {/* Quick actions: send it to friends or start a Link Up without leaving the list */}
+                <div className="absolute bottom-3 left-[5.5rem] flex gap-2 sm:bottom-auto sm:left-auto sm:right-4 sm:top-1/2 sm:-translate-y-1/2">
+                  <LinkUpHere venueSlug={p.slug} signedIn={!!viewer} isAdult={viewer?.isAdult ?? false} compact />
+                  <ShareButton path={`/venue/${p.slug}`} title={p.branch ? `${p.name} · ${p.branch}` : p.name} text={`Pull up? ${p.name} on VYBR8`} compact />
+                </div>
               </li>
             );
           })}

@@ -31,7 +31,7 @@ export default async function ImportPage() {
         </p>
       </header>
 
-      <ImportRunner cities={CITIES.map((c) => ({ slug: c.slug, name: c.name }))} tileCount={TILE_GRID * TILE_GRID} />
+      <ImportRunner cities={CITIES.map((c) => ({ slug: c.slug, name: c.name, imported: Number(counts.get(c.slug)?.imported ?? 0) }))} tileCount={TILE_GRID * TILE_GRID} />
 
       <section aria-labelledby="counts-h" className="flex flex-col gap-2">
         <h2 id="counts-h" className="text-lg font-bold">Places per city</h2>

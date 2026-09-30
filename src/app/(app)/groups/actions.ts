@@ -201,7 +201,7 @@ export async function saveTaste(form: FormData) {
   const viewer = await requireViewer("/groups");
   const p = tasteSchema.safeParse(Object.fromEntries([...form.entries()].filter(([, v]) => v !== "")));
   const rt = typeof form.get("returnTo") === "string" ? String(form.get("returnTo")) : "";
-  const returnTo = /^\/(groups|eat)(\/|\?|$)/.test(rt) ? rt : "/groups";
+  const returnTo = /^\/(groups|eat|profile)(\/|\?|$)/.test(rt) ? rt : "/groups";
   if (!p.success) back(returnTo, "Check your tastes and try again.");
   const t = p.data!;
   const row = {

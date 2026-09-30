@@ -150,7 +150,10 @@ export async function getGroupSuggestions(group: GroupDetail, viewer: Viewer): P
   const statParts = await Promise.all(idChunks.map((ids) => supabase.from("menu_item_stats").select("menu_item_id, avg_score").in("menu_item_id", ids)));
   const stats = statParts.flatMap((r) => r.data ?? []);
   const score = new Map(((stats ?? []) as { menu_item_id: string; avg_score: number | null }[]).map((s) => [s.menu_item_id, s.avg_score == null ? null : Number(s.avg_score)]));
-  const candidates: Candidate[] = irows.map((i) => ({
+  // Places anyone in the group marked "Never again" are never suggested.
+  const { data: never } = await supabase.rpc("group_never_places", { p_group: group.id });
+  const skip = new Set(((never ?? []) as unknown as (string | { group_never_places: string })[]).map((r) => (typeof r === "string" ? r : r.group_never_places)));
+  const candidates: Candidate[] = irows.filter((i) => !skip.has(i.business.id)).map((i) => ({
     id: i.id, name: i.name, description: i.description, dishType: i.dish_type, category: i.category, isAlcoholic: i.is_alcoholic,
     businessId: i.business.id, businessName: i.business.name, businessSlug: i.business.slug, avgScore: score.get(i.id) ?? null,
   }));
