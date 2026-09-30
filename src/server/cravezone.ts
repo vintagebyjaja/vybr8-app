@@ -4,6 +4,7 @@ import { vybePercent, type CraveFilter, type CraveSort, type CravingCategory } f
 import { createClient } from "@/lib/supabase/server";
 import type { Viewer } from "@/server/auth";
 import { getMyTaste } from "@/server/groups";
+import { getPlaceLinks, type PlaceLink } from "@/server/place-links";
 
 /** The craving taxonomy, from the database (ordered for display). */
 export const getCravingCategories = cache(async (): Promise<CravingCategory[]> => {
@@ -23,14 +24,14 @@ export const getCravingCategories = cache(async (): Promise<CravingCategory[]> =
 export type CraveItem = {
   kind: "item";
   itemId: string; name: string; description: string | null; priceCents: number | null; category: "food" | "drink";
-  business: { id: string; slug: string; name: string; kind: string; logo: string | null; href: string };
+  business: { id: string; slug: string; name: string; rawName: string; kind: string; logo: string | null; href: string; website: string | null; links: PlaceLink[] };
   lat: number | null; lng: number | null; meters: number | null; openNow: boolean | null;
   score: number | null; ratings: number; matched: string[]; vybe: number;
   itemSaved: boolean; placeSaved: boolean; photo: string | null;
 };
 export type CravePlace = {
   kind: "place";
-  business: { id: string; slug: string; name: string; kind: string; logo: string | null; href: string };
+  business: { id: string; slug: string; name: string; rawName: string; kind: string; logo: string | null; href: string; website: string | null; links: PlaceLink[] };
   cuisines: string[]; priceLevel: number | null; address: string | null;
   lat: number | null; lng: number | null; meters: number | null; openNow: boolean | null;
   rating: number | null; ratings: number; matched: string[]; hasMenu: boolean; placeSaved: boolean;
@@ -91,7 +92,7 @@ export async function searchCravings(viewer: Viewer | null, q: CraveQuery): Prom
       return {
         kind: "item" as const,
         itemId: r.item_id, name: r.item_name.replace(/\s*\(demo\)\s*$/i, ""), description: r.description, priceCents: r.price_cents, category: r.category,
-        business: { id: r.business_id, slug: r.slug, name: bizName(r.business_name, r.branch_name), kind: r.kind, logo: r.logo_url, href: hrefFor(r.slug, r.kind) },
+        business: { id: r.business_id, slug: r.slug, name: bizName(r.business_name, r.branch_name), rawName: r.business_name, kind: r.kind, logo: r.logo_url, href: hrefFor(r.slug, r.kind), website: null, links: [] },
         lat: r.lat == null ? null : Number(r.lat), lng: r.lng == null ? null : Number(r.lng), meters: r.meters, openNow: r.open_now,
         score: r.avg_score == null ? null : Number(r.avg_score), ratings: r.rating_count, matched: r.matched,
         vybe: vybePercent({
@@ -131,13 +132,27 @@ export async function searchCravings(viewer: Viewer | null, q: CraveQuery): Prom
     .filter((r) => !withItems.has(r.business_id))
     .map((r) => ({
       kind: "place" as const,
-      business: { id: r.business_id, slug: r.slug, name: bizName(r.name, r.branch_name), kind: r.kind, logo: r.logo_url, href: hrefFor(r.slug, r.kind) },
+      business: { id: r.business_id, slug: r.slug, name: bizName(r.name, r.branch_name), rawName: r.name, kind: r.kind, logo: r.logo_url, href: hrefFor(r.slug, r.kind), website: null, links: [] },
       cuisines: r.cuisines ?? [], priceLevel: r.price_level, address: r.address,
       lat: r.lat == null ? null : Number(r.lat), lng: r.lng == null ? null : Number(r.lng), meters: r.meters, openNow: r.open_now,
       rating: r.rating == null ? null : Number(r.rating), ratings: r.ratings, matched: r.matched, hasMenu: r.has_menu, placeSaved: r.place_saved,
     }))
     .sort(placeSort[q.sort])
     .slice(0, 24);
+
+  // Menu / order / reserve links for every place on the page.
+  const ids = [...new Set([...items.map((i) => i.business.id), ...places.map((p) => p.business.id)])];
+  if (ids.length) {
+    const [links, { data: sites }] = await Promise.all([
+      getPlaceLinks(ids, viewer?.id ?? null),
+      supabase.from("businesses").select("id, website").in("id", ids),
+    ]);
+    const siteBy = new Map(((sites ?? []) as { id: string; website: string | null }[]).map((b) => [b.id, b.website]));
+    for (const x of [...items, ...places]) {
+      x.business.links = links.get(x.business.id) ?? [];
+      x.business.website = siteBy.get(x.business.id) ?? null;
+    }
+  }
 
   return { items, places };
 }

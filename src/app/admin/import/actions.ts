@@ -9,7 +9,7 @@ import { requireAdmin } from "@/server/auth";
 import { log } from "@/server/log";
 import { fetchOsmPlaces, OverpassBusyError } from "@/server/osm";
 
-export type TileResult = { found: number; added: number; matched: number; known: number; skipped: number; errors: string[]; busy?: boolean };
+export type TileResult = { found: number; added: number; matched: number; known: number; skipped: number; links?: number; errors: string[]; busy?: boolean };
 
 /**
  * Import one tile of a city (the page walks through all 25, downtown first). Adds at most `remaining` new places,
@@ -49,6 +49,13 @@ export async function importTile(citySlug: string, tile: number, remaining: numb
     left -= d.added;
     total.errors.push(...(d.errors ?? []));
   }
-  if (total.added) revalidatePath("/", "layout");
+  // Website, menu, Instagram, DoorDash, OpenTable… from OpenStreetMap, for new and existing places (fills gaps only).
+  const withLinks = rows.filter((r) => r.website || Object.keys(r.links ?? {}).length).map((r) => ({ ext: r.ext, website: r.website, links: r.links }));
+  if (withLinks.length) {
+    const { data, error } = await supabase.rpc("import_place_links", { p_rows: withLinks });
+    if (error) total.errors.push(error.message);
+    else total.links = Number(data ?? 0);
+  }
+  if (total.added || total.links) revalidatePath("/", "layout");
   return total;
 }

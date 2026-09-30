@@ -14,6 +14,8 @@ import { getBirthdayPerks } from "@/server/birthday";
 import { getFeed } from "@/server/posts";
 import { getMenu, getPlaceStats } from "@/server/menus";
 import { MenuList } from "@/components/menu/MenuList";
+import { PlaceLinks } from "@/components/places/PlaceLinks";
+import { getPlaceLinks } from "@/server/place-links";
 import { RatePlace } from "@/components/ratings/RatePlace";
 import { ApprovedBadge } from "@/components/places/ApprovedBadge";
 import { placeTitle } from "@/domain/places/places";
@@ -24,7 +26,7 @@ import { RankBadge } from "@/components/charts/RankBadge";
 import { findCity, localClock, type Hours } from "@/domain/map/map";
 import { ranksForBusiness } from "@/server/charts";
 
-type Params = { params: Promise<{ slug: string }>; searchParams: Promise<{ added?: string; closed?: string; hours?: string; badge?: string }> };
+type Params = { params: Promise<{ slug: string }>; searchParams: Promise<{ added?: string; closed?: string; hours?: string; badge?: string; link_saved?: string; link_error?: string }> };
 
 const KIND_LABEL: Record<string, string> = {
   restaurant: "Restaurant", bar: "Bar", cocktail_lounge: "Cocktail lounge", lounge: "Lounge", cigar_lounge: "Cigar lounge",
@@ -49,7 +51,7 @@ export async function generateMetadata({ params }: Params) {
 
 export default async function VenuePage({ params, searchParams }: Params) {
   const { slug } = await params;
-  const { added, closed, hours: hoursMsg, badge: badgeMsg } = await searchParams;
+  const { added, closed, hours: hoursMsg, badge: badgeMsg, link_saved: linkSaved, link_error: linkError } = await searchParams;
   const venue = await loadVenue(slug);
   if (!venue) notFound();
   const viewerP = getViewer();
@@ -99,6 +101,11 @@ export default async function VenuePage({ params, searchParams }: Params) {
   const { data: myList } = viewer ? await (await createClient()).from("place_lists").select("list").eq("business_id", venue.id).maybeSingle() : { data: null };
   const listed = (myList as { list: "saved" | "never" } | null)?.list ?? null;
   const pendingBadges = badges.filter((b) => b.status === "pending");
+  const [links, { data: membership }] = await Promise.all([
+    getPlaceLinks([venue.id as string], viewer?.id ?? null),
+    viewer ? (await createClient()).from("business_members").select("role").eq("business_id", venue.id).eq("user_id", viewer.id).maybeSingle() : Promise.resolve({ data: null }),
+  ]);
+  const canManageLinks = isStaff || ["owner", "manager"].includes(String((membership as { role?: string } | null)?.role ?? ""));
   const primary = locations.find((l) => l.is_primary) ?? locations[0];
   const hours: Hours[] = (primary?.hours ?? []).map((h) => ({ weekday: h.weekday, opensAt: h.opens_at, closesAt: h.closes_at }));
   const status = primary ? openStatus(hours, primary.timezone) : null;
@@ -324,6 +331,10 @@ export default async function VenuePage({ params, searchParams }: Params) {
           )}
         </section>
       )}
+
+      <PlaceLinks businessId={venue.id as string} name={venue.name as string} cityName={citySlug ? findCity(citySlug).name : ""} kind={venue.kind as string}
+        website={(venue.website as string | null) ?? null} links={links.get(venue.id as string) ?? []} signedIn={!!viewer} canManage={canManageLinks}
+        back={`/venue/${venue.slug}`} saved={linkSaved === "1"} error={linkError ? String(linkError).slice(0, 160) : null} />
 
       <section aria-labelledby="menu-h" className="flex flex-col gap-3">
         <h2 id="menu-h" className="text-xl font-bold">Menu &amp; VYBR8 scores</h2>

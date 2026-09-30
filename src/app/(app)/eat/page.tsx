@@ -14,6 +14,9 @@ import { EAT_SORTS, EAT_TYPES, KIND_LABEL, cuisineLabel, formatDistance, type Ea
 import { getViewer } from "@/server/auth";
 import { EAT_PAGE, getCityCuisines, getPlacesNear } from "@/server/eat";
 import { getMyTaste } from "@/server/groups";
+import { PlaceLinks } from "@/components/places/PlaceLinks";
+import { getPlaceLinks } from "@/server/place-links";
+import { createClient } from "@/lib/supabase/server";
 import { getViewerCity } from "@/server/map";
 
 export const metadata = { title: "What Should I Eat?" };
@@ -50,6 +53,11 @@ export default async function WhatToEatPage({ searchParams }: Search) {
   ]);
   const hasMore = rows.length > EAT_PAGE;
   const places = rows.slice(0, EAT_PAGE);
+  const ids = places.map((p) => p.businessId);
+  const [linkMap, { data: siteRows }] = ids.length
+    ? await Promise.all([getPlaceLinks(ids), (await createClient()).from("businesses").select("id, website").in("id", ids)])
+    : [new Map(), { data: [] }];
+  const siteBy = new Map(((siteRows ?? []) as { id: string; website: string | null }[]).map((b) => [b.id, b.website]));
 
   // Links keep every other filter as-is.
   const href = (change: Record<string, string | null>) => {
@@ -172,6 +180,9 @@ export default async function WhatToEatPage({ searchParams }: Search) {
                 <div className="absolute bottom-3 left-[5.5rem] flex gap-2 sm:bottom-auto sm:left-auto sm:right-4 sm:top-1/2 sm:-translate-y-1/2">
                   <LinkUpHere venueSlug={p.slug} signedIn={!!viewer} isAdult={viewer?.isAdult ?? false} compact />
                   <ShareButton path={`/venue/${p.slug}`} title={p.branch ? `${p.name} · ${p.branch}` : p.name} text={`Pull up? ${p.name} on VYBR8`} compact />
+                </div>
+                <div className="mt-1.5 pl-1">
+                  <PlaceLinks compact noSearch businessId={p.businessId} name={p.name} cityName={city.name} kind={p.kind} website={siteBy.get(p.businessId) ?? null} links={linkMap.get(p.businessId) ?? []} />
                 </div>
               </li>
             );

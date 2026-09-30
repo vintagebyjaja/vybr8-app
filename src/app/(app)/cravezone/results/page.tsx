@@ -138,7 +138,7 @@ export default async function CraveResults({ searchParams }: { searchParams: Pro
             <section aria-labelledby="items-h" className="flex flex-col gap-3">
               <h2 id="items-h" className="sr-only">Dishes and drinks</h2>
               <ol className="flex flex-col gap-3">
-                {items.map((i, n) => <li key={i.itemId}><CraveItemCard item={i} rank={n + 1} categories={categories} back={back} signedIn={!!viewer} /></li>)}
+                {items.map((i, n) => <li key={i.itemId}><CraveItemCard item={i} rank={n + 1} categories={categories} back={back} signedIn={!!viewer} cityName={city.name} /></li>)}
               </ol>
             </section>
           )}
@@ -147,7 +147,7 @@ export default async function CraveResults({ searchParams }: { searchParams: Pro
               <h2 id="places-h" className="text-lg font-bold">{items.length ? "More places that can hit it" : "Places that can hit this craving"}</h2>
               {!items.length && <p className="-mt-2 text-sm text-muted">These spots are known for it. Their menus aren&rsquo;t on VYBR8 yet, so we can&rsquo;t show exact dishes and prices.</p>}
               <ul className="grid gap-3 sm:grid-cols-2">
-                {places.map((p) => <li key={p.business.id}><CravePlaceCard place={p} categories={categories} signedIn={!!viewer} back={back} /></li>)}
+                {places.map((p) => <li key={p.business.id}><CravePlaceCard place={p} categories={categories} signedIn={!!viewer} back={back} cityName={city.name} /></li>)}
               </ul>
             </section>
           )}

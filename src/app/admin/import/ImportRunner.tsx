@@ -64,6 +64,30 @@ export function ImportRunner({ cities, tileCount }: { cities: { slug: string; na
     setRunning(null); router.refresh();
   }
 
+  /** Links only: website, menu, Instagram, DoorDash, OpenTable… for places already imported. Adds no new places. */
+  async function runLinks(slugs: string[]) {
+    stop.current = false; setResults({}); setLog([]);
+    for (const slug of slugs) {
+      if (stop.current) break;
+      setRunning(slug); setDone(0); setTotals(ZERO);
+      let links = 0;
+      for (let i = 0; i < order.length && !stop.current; i++) {
+        let r: TileResult | null = null;
+        for (let attempt = 0; attempt < 3 && !stop.current; attempt++) {
+          try { r = await importTile(slug, order[i]!, 0); } catch { r = { found: 0, added: 0, matched: 0, known: 0, skipped: 0, errors: [], busy: true }; }
+          if (!r.busy) break;
+          await wait(8000 * (attempt + 1));
+        }
+        links += r?.links ?? 0;
+        setDone(i + 1);
+        await wait(1500);
+      }
+      setResults((m) => ({ ...m, [slug]: links }));
+      note(`${nameOf(slug)}: ${links} new links (menus, socials, delivery, reservations).`);
+    }
+    setRunning(null); router.refresh();
+  }
+
   async function runAll() {
     stop.current = false; setResults({}); setLog([]);
     const todo = cities.filter((c) => c.imported === 0);
@@ -97,12 +121,15 @@ export function ImportRunner({ cities, tileCount }: { cities: { slug: string; na
             <button type="button" onClick={runAll} disabled={!waiting.length} className="min-h-11 rounded-full border border-mint/60 px-5 text-sm font-bold text-mint disabled:opacity-40">
               Import all cities ({waiting.length} left)
             </button>
+            <button type="button" onClick={() => runLinks(cities.filter((c) => c.imported > 0).map((c) => c.slug))} className="min-h-11 rounded-full border border-sky/60 px-5 text-sm font-bold text-sky">
+              Refresh links (all imported cities)
+            </button>
           </>
         )}
       </div>
       <p className="text-xs text-faint">
         Starts downtown and works outward, most complete places first (address, hours, website), and stops at the limit.
-        &ldquo;Import all cities&rdquo; runs every city that has no imported places yet, one after another. Keep this page open while it runs.
+        &ldquo;Import all cities&rdquo; runs every city that has no imported places yet, one after another. &ldquo;Refresh links&rdquo; adds no places: it only fills in websites, menus, Instagram, delivery and reservation links from OpenStreetMap where they&rsquo;re missing. Keep this page open while it runs.
       </p>
 
       {(running || done > 0) && (

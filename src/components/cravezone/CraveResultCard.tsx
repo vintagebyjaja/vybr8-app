@@ -6,6 +6,7 @@ import { formatDistance } from "@/domain/places/eat";
 import type { CraveItem, CravePlace } from "@/server/cravezone";
 import { toggleSavedItem } from "@/app/(app)/cravezone/actions";
 import { tone } from "./tones";
+import { PlaceLinks } from "@/components/places/PlaceLinks";
 
 const directions = (lat: number | null, lng: number | null, _name: string) =>
   lat != null && lng != null ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}` : null;
@@ -17,7 +18,7 @@ function OpenTag({ open }: { open: boolean | null }) {
 }
 
 /** One dish or drink that hits the craving. Photo first, then the numbers that matter. */
-export function CraveItemCard({ item, rank, categories, back, signedIn }: { item: CraveItem; rank: number; categories: CravingCategory[]; back: string; signedIn: boolean }) {
+export function CraveItemCard({ item, rank, categories, back, signedIn, cityName }: { item: CraveItem; rank: number; categories: CravingCategory[]; back: string; signedIn: boolean; cityName: string }) {
   const cats = item.matched.map((s) => categories.find((c) => c.slug === s)).filter(Boolean) as CravingCategory[];
   const lead = cats[0];
   const dir = directions(item.lat, item.lng, item.business.name);
@@ -49,6 +50,7 @@ export function CraveItemCard({ item, rank, categories, back, signedIn }: { item
           ) : <Link href={`/auth/sign-in?next=${encodeURIComponent(back)}`} className={pill}>♡ Save</Link>}
           {dir && <a href={dir} target="_blank" rel="noopener noreferrer" className={pill}>Directions</a>}
           <Link href={`${item.business.href}#item-${item.itemId}`} className={pill}>View item</Link>
+          <PlaceLinks compact businessId={item.business.id} name={item.business.rawName} cityName={cityName} kind={item.business.kind} website={item.business.website} links={item.business.links} />
           {item.business.kind !== "food_truck" && <Link href={signedIn ? `/vybe/new?${new URLSearchParams({ venue: item.business.slug, who: "friends" })}` : `/auth/sign-in?next=${encodeURIComponent(back)}`} className={pill}>+ Link Up</Link>}
         </div>
       </div>
@@ -57,7 +59,7 @@ export function CraveItemCard({ item, rank, categories, back, signedIn }: { item
 }
 
 /** A place that can hit the craving (its menu isn't on VYBR8 yet, or it's known for it). */
-export function CravePlaceCard({ place, categories, signedIn, back }: { place: CravePlace; categories: CravingCategory[]; signedIn: boolean; back: string }) {
+export function CravePlaceCard({ place, categories, signedIn, back, cityName }: { place: CravePlace; categories: CravingCategory[]; signedIn: boolean; back: string; cityName: string }) {
   const cats = place.matched.map((s) => categories.find((c) => c.slug === s)).filter(Boolean) as CravingCategory[];
   const dir = directions(place.lat, place.lng, place.business.name);
   const dist = formatDistance(place.meters);
@@ -76,6 +78,7 @@ export function CravePlaceCard({ place, categories, signedIn, back }: { place: C
         <div className="mt-2 flex flex-wrap gap-2">
           {dir && <a href={dir} target="_blank" rel="noopener noreferrer" className={pill}>Directions</a>}
           <Link href={place.business.href} className={pill}>View place</Link>
+          <PlaceLinks compact businessId={place.business.id} name={place.business.rawName} cityName={cityName} kind={place.business.kind} website={place.business.website} links={place.business.links} />
           {place.business.kind !== "food_truck" && <Link href={signedIn ? `/vybe/new?${new URLSearchParams({ venue: place.business.slug, who: "friends" })}` : `/auth/sign-in?next=${encodeURIComponent(back)}`} className={pill}>+ Link Up</Link>}
         </div>
       </div>

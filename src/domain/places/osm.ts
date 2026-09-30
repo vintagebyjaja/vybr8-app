@@ -2,6 +2,7 @@
  * Turning OpenStreetMap places into VYBR8 places. Pure functions, no network.
  * Data © OpenStreetMap contributors, available under the Open Database License (ODbL).
  */
+import { osmLinks, type LinkKind } from "./links.ts";
 import type { Bounds } from "@/domain/map/map";
 
 export type OsmElement = {
@@ -16,6 +17,7 @@ export type ImportRow = {
   ext: string; name: string; kind: string; lat: number; lng: number;
   address: string | null; postal: string | null; website: string | null; phone: string | null;
   brand: string | null; cuisines: string[]; hours: { weekday: number; opens: string; closes: string }[];
+  links: Partial<Record<LinkKind, string>>;
 };
 
 /** Each city is imported as a TILE_GRID × TILE_GRID grid of small requests. */
@@ -169,6 +171,7 @@ export function toImportRow(e: OsmElement): ImportRow | null {
     brand: t.brand?.trim().slice(0, 120) || null,
     cuisines: (t.cuisine ?? "").split(";").map((c) => c.trim().toLowerCase()).filter(Boolean).slice(0, 8),
     hours: parseHours(t.opening_hours),
+    links: osmLinks(t),
   };
 }
 
@@ -188,5 +191,5 @@ export function tilesCenterOut(n = TILE_GRID): number[] {
 
 /** How complete a place's info is: address, hours, website, phone and cuisine first. */
 export function rowQuality(r: ImportRow): number {
-  return (r.address ? 3 : 0) + (r.hours.length ? 3 : 0) + (r.website ? 2 : 0) + (r.phone ? 1 : 0) + (r.cuisines.length ? 1 : 0);
+  return (r.address ? 3 : 0) + (r.hours.length ? 3 : 0) + (r.website ? 2 : 0) + (r.phone ? 1 : 0) + (r.cuisines.length ? 1 : 0) + (Object.keys(r.links ?? {}).length ? 1 : 0);
 }
