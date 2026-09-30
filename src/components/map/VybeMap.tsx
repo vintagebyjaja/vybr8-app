@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { setCity } from "@/app/(app)/map-actions";
 import { StreetMap, type StreetPin } from "@/components/map/StreetMap";
+import { KIND_TONE, KindIcon } from "@/components/places/KindIcon";
 import { ApprovedBadge } from "@/components/places/ApprovedBadge";
 import type { MapData, MapFriend, MapLinkup, MapTruck, MapVenue } from "@/domain/map/pins";
 import { OCCASIONS, type Occasion } from "@/domain/linkups/linkups";
@@ -126,20 +127,20 @@ export function VybeMap({ data, cities, mapboxToken }: { data: MapData; cities: 
     >
       <span className="relative block">
         {v.photo ? (
+          // A real photo from the latest post here: the pin people notice first.
           // eslint-disable-next-line @next/next/no-img-element -- signed or demo URLs; small thumbnails
-          <img src={v.photo.src} alt="" className="size-14 rounded-2xl border-2 border-ink object-cover shadow-lg ring-2 ring-coral/60" />
+          <img src={v.photo.src} alt="" className="size-14 rounded-2xl border-2 border-ink object-cover shadow-lg ring-2 ring-coral/60 group-data-[zoom=far]/map:size-10" />
+        ) : v.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- business logo
+          <img src={v.logoUrl} alt="" className="size-11 rounded-full border-2 border-ink object-cover shadow-lg ring-2 ring-sky/60 group-data-[zoom=far]/map:size-8" />
         ) : (
-          <span className="vybe-ring grid size-11 place-items-center rounded-full font-display text-sm font-extrabold">
-            {v.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element -- business logo
-              <img src={v.logoUrl} alt="" className="size-full rounded-full object-cover" />
-            ) : (
-              v.name.slice(0, 1)
-            )}
+          // No photo yet: a small icon for the kind of place (burger, coffee, cocktail…). Tiny when zoomed out so the city stays readable.
+          <span className={`grid size-9 place-items-center rounded-full border-2 border-ink shadow-md transition-all group-data-[zoom=far]/map:size-5 group-data-[zoom=mid]/map:size-7 ${KIND_TONE[v.kind] ?? "bg-orange text-ink"}`}>
+            <KindIcon kind={v.kind} className="size-4 group-data-[zoom=far]/map:size-3 group-data-[zoom=mid]/map:size-3.5" />
           </span>
         )}
         {v.openNow !== null && (
-          <span className={`absolute -right-1 -top-1 size-3.5 rounded-full border-2 border-ink ${v.openNow ? "bg-mint" : "bg-faint"}`} />
+          <span className={`absolute -right-1 -top-1 size-3.5 rounded-full border-2 border-ink group-data-[zoom=far]/map:hidden ${v.openNow ? "bg-mint" : "bg-faint"}`} />
         )}
       </span>
     </button>

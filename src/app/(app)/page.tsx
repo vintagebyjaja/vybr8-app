@@ -15,7 +15,7 @@ import { ActiveVybeCard } from "@/components/home/ActiveVybeCard";
 import { QuickTiles } from "@/components/home/QuickTiles";
 import { WhatToEatCard } from "@/components/home/WhatToEatCard";
 import { findCity } from "@/domain/map/map";
-import { ACTIVITY_LEVELS, DAY_PARTS, activityScore, dayAdvice } from "@/domain/health/health";
+import { ACTIVITY_LEVELS, DAY_PARTS } from "@/domain/health/health";
 import { getActiveVybe, getRhythm, nowFor } from "@/server/health";
 
 const INTENTS = [
@@ -47,9 +47,6 @@ export default async function HomePage({ searchParams }: Search) {
     viewer && now ? getActiveVybe(viewer.id, now.day, tz, 8) : Promise.resolve(null),
   ]);
   const ci = active?.checkin ?? null;
-  const dayType = active
-    ? dayAdvice({ sleepMin: active.sleep?.minutes ?? null, sleepGoal: active.sleepGoal, quality: active.sleep?.quality ?? null, level: ci?.level ?? null, score: activityScore(ci?.level ?? null, ci?.stepsBand ?? null, ci?.miles ?? null) }).dayType
-    : "custom";
 
   return (
     <div className="flex flex-col gap-6">
@@ -74,7 +71,7 @@ export default async function HomePage({ searchParams }: Search) {
           ]} />
           <ActiveVybeCard sleepMin={active?.sleep?.minutes ?? null} goal={active?.sleepGoal ?? 480} wake={active?.sleep?.wakeTime ?? null} dayLabel={ACTIVITY_LEVELS.find((l) => l.key === ci?.level)?.label ?? null}
             greeting={now ? DAY_PARTS.find((x) => x.key === now.part)?.greeting ?? null : null} due={now && active ? !active.checkins[now.part] : false} />
-          <WhatToEatCard href={`/health/plan?type=${dayType}`} city={findCity(citySlug).slug} cityName={findCity(citySlug).name} />
+          <WhatToEatCard href={`/eat?city=${findCity(citySlug).slug}`} city={findCity(citySlug).slug} cityName={findCity(citySlug).name} />
           <QuickTiles tiles={[
             { href: "/charts?tab=food", label: "Big Back", tone: "text-orange", icon: "plate" },
             { href: "/charts?tab=drinks", label: "Liquid Lover", tone: "text-coral", icon: "glass" },

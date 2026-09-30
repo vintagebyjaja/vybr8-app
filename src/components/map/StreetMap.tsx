@@ -21,6 +21,7 @@ type GLMap = {
   fitBounds(b: [[number, number], [number, number]], o?: Record<string, unknown>): void;
   addControl(c: unknown, position?: string): void;
   on(event: string, f: (e: { error?: { status?: number } }) => void): void;
+  getZoom(): number;
   once(event: string, f: () => void): void;
 };
 type GL = {
@@ -61,6 +62,7 @@ export function StreetMap({ token, bounds, pins, onFail }: { token: string; boun
   failed.current = onFail;
   const markers = useRef(new Map<string, { marker: GLMarker; el: HTMLDivElement }>());
   const [map, setMap] = useState<GLMap | null>(null);
+  const [zoom, setZoom] = useState<"far" | "mid" | "near">("far");
   const [els, setEls] = useState<Map<string, HTMLDivElement>>(() => new Map());
   const boundsKey = `${bounds.north},${bounds.south},${bounds.east},${bounds.west}`;
 
@@ -91,6 +93,13 @@ export function StreetMap({ token, bounds, pins, onFail }: { token: string; boun
           window.clearTimeout(giveUp);
           created?.resize();
         });
+        // Pins shrink to small icons when the whole city is showing, and grow as you zoom in.
+        const zoomLevel = () => {
+          const z = created?.getZoom() ?? 11;
+          setZoom(z < 12.5 ? "far" : z < 14.5 ? "mid" : "near");
+        };
+        created.on("zoomend", zoomLevel);
+        created.once("load", zoomLevel);
         created.on("error", (e) => {
           // A bad or restricted token: fall back to the frequency map instead of a blank box.
           if (e.error?.status === 401 || e.error?.status === 403) failed.current();
@@ -149,7 +158,7 @@ export function StreetMap({ token, bounds, pins, onFail }: { token: string; boun
   return (
     <>
       {/* Mapbox's stylesheet makes its container position:relative, so the map gets its own full-size box inside this one. */}
-      <div className="absolute inset-0">
+      <div className="group/map absolute inset-0" data-zoom={zoom}>
         <div ref={box} className="h-full w-full" />
       </div>
       {pins.map((p) => {
