@@ -8,6 +8,8 @@ import { ComingSoon } from "@/components/ui/ComingSoon";
 import type { PostKind } from "@/domain/posts/posts";
 import { getViewer } from "@/server/auth";
 import { getFeaturedCreators, getFeed } from "@/server/posts";
+import { CraveZoneHero } from "@/components/cravezone/CraveZoneHero";
+import { getCravingCategories } from "@/server/cravezone";
 
 export const metadata = { title: "Explore" };
 
@@ -44,6 +46,8 @@ export default async function ExplorePage({ searchParams }: { searchParams: Prom
           </div>
         )}
       </header>
+
+      <CraveZoneHero categories={await getCravingCategories()} from="explore" />
 
       <section aria-label="Discover" className="flex flex-col gap-3">
         <SearchBox />

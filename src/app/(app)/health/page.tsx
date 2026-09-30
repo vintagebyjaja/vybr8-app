@@ -14,12 +14,15 @@ import { requireViewer } from "@/server/auth";
 import { can } from "@/server/entitlements";
 import { getActiveVybe, getRhythm, nowFor } from "@/server/health";
 import { getViewerCity } from "@/server/map";
-import { checkIn, logFood, logSleep, removeFood } from "./actions";
+import { checkIn, estimateFood, logFood, logSleep, removeFood } from "./actions";
+import { nutritionAiEnabled } from "@/server/nutrition-ai";
+import { CraveZoneHero } from "@/components/cravezone/CraveZoneHero";
+import { getCravingCategories } from "@/server/cravezone";
 
 export const metadata = { title: "Active Vybe" };
 
 const TONE: Record<string, string> = { coral: "bg-coral/20 text-coral", orange: "bg-orange/20 text-orange", sky: "bg-sky/20 text-sky", mint: "bg-mint/20 text-mint", lavender: "bg-lavender/20 text-lavender" };
-const SAVED: Record<string, string> = { sleep: "Sleep saved.", day: "Checked in. Nice.", food: "Food added.", drink: "Drink added.", water: "Water added. Stay hydrated." };
+const SAVED: Record<string, string> = { sleep: "Sleep saved.", day: "Checked in. Nice.", food: "Food added.", drink: "Drink added.", water: "Water added. Stay hydrated.", estimate: "Calories estimated." };
 const KIND_DOT: Record<string, string> = { food: "bg-orange", drink: "bg-coral", water: "bg-sky" };
 const input = "min-h-11 w-full rounded-xl border border-line bg-ink px-3 text-sm tabular-nums placeholder:text-faint focus:border-lavender";
 
@@ -45,6 +48,7 @@ export default async function HealthPage({ searchParams }: Search) {
   const n = av.nutrition;
   const calTarget = n.target?.calories ?? null;
   const isToday = date === today;
+  const ai = nutritionAiEnabled();
   const nowSlot = isToday ? slotForHour(bodyHour(now.clock.minutes, rhythm.wake)) : null;
   const part: DayPart = DAY_PARTS.some((x) => x.key === sp.part) ? (sp.part as DayPart) : isToday ? now.part : "night";
   const partInfo = DAY_PARTS.find((x) => x.key === part)!;
@@ -171,6 +175,8 @@ export default async function HealthPage({ searchParams }: Search) {
           </section>
 
           {/* What you ate and drank */}
+          <CraveZoneHero categories={await getCravingCategories()} from="health" />
+
           <section aria-labelledby="ate-h" className="flex flex-col gap-4 rounded-[var(--radius-card)] border border-line bg-surface p-5">
             <div className="flex items-baseline justify-between gap-3">
               <h2 id="ate-h" className="font-display text-xl font-extrabold">{isToday ? "Have you already ate?" : "What you ate and drank"}</h2>
@@ -202,10 +208,16 @@ export default async function HealthPage({ searchParams }: Search) {
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-semibold">{j.name}</p>
                             <p className="text-xs text-muted tabular-nums">
-                              {[j.amount, j.ounces != null ? `${j.ounces} oz` : null, j.kind !== "water" && j.calories != null ? `${j.calories.toLocaleString()} cal` : null, j.fromMenu ? "from a VYBR8 menu" : null]
+                              {[j.amount, j.ounces != null ? `${j.ounces} oz` : null, j.kind !== "water" && j.calories != null ? `${j.estimated ? "~" : ""}${j.calories.toLocaleString()} cal${j.estimated ? " (estimate)" : ""}` : null, j.fromMenu ? "from a VYBR8 menu" : null]
                                 .filter(Boolean).join(" · ") || (j.kind === "drink" ? "Drink" : "Food")}
                             </p>
                           </div>
+                          {ai && j.kind !== "water" && j.calories == null && !j.fromMenu && (
+                            <form action={estimateFood}>
+                              <input type="hidden" name="id" value={j.id} /><input type="hidden" name="date" value={date} />
+                              <button className="min-h-9 rounded-full border border-mint/50 px-3 text-xs font-bold text-mint hover:bg-mint/10">Estimate cal</button>
+                            </form>
+                          )}
                           <form action={removeFood}>
                             <input type="hidden" name="id" value={j.id} /><input type="hidden" name="date" value={date} />
                             <button aria-label={`Remove ${j.name}`} className="grid size-9 place-items-center rounded-full text-lg text-faint hover:bg-surface-2 hover:text-text">×</button>
@@ -222,7 +234,7 @@ export default async function HealthPage({ searchParams }: Search) {
 
             <details className="group rounded-2xl border border-line bg-ink p-4" open={av.journal.length === 0}>
               <summary className="cursor-pointer list-none text-center font-bold text-mint">+ Add food or a drink</summary>
-              <div className="mt-4"><FoodLogForm action={logFood} date={date} slot={nowSlot} /></div>
+              <div className="mt-4"><FoodLogForm action={logFood} date={date} slot={nowSlot} ai={ai} /></div>
             </details>
           </section>
 
@@ -263,7 +275,13 @@ export default async function HealthPage({ searchParams }: Search) {
                 </div>
               ))}
             </dl>
-            {!calTarget && <p className="text-xs text-faint">Add what you ate above, or log from a dish page or your Vybe Plan. Calorie and macro targets are part of VYBR8+.</p>}
+            {n.missing > 0 && (
+              <p className="text-xs text-orange">
+                {n.missing} {n.missing === 1 ? "item has" : "items have"} no calories yet{ai ? ". Tap \"Estimate cal\" next to it above." : ". Add them when you log it."}
+              </p>
+            )}
+            {n.estimated && <p className="text-xs text-faint">~ Includes VYBR8 estimates: typical values for what you described, so real portions can differ.</p>}
+            {!calTarget && <p className="text-xs text-faint">{ai ? "Leave calories blank when you add food and VYBR8 estimates them for you." : "Add what you ate above, or log from a dish page or your Vybe Plan."} Calorie and macro targets are part of VYBR8+.</p>}
           </section>
         </>
       ) : canHistory ? (

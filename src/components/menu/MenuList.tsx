@@ -15,7 +15,7 @@ export function MenuList({ items, signedIn, returnTo, ranks = {} }: { items: Men
           <h3 className="text-sm font-bold uppercase tracking-wide text-faint">{s}</h3>
           <ul className="flex flex-col divide-y divide-line rounded-2xl border border-line bg-surface">
             {items.filter((i) => (i.section ?? (i.category === "drink" ? "Drinks" : "Menu")) === s).map((i) => (
-              <li key={i.id} className={`flex flex-col gap-2 p-4 ${i.soldOut ? "opacity-60" : ""}`}>
+              <li key={i.id} id={`item-${i.id}`} className={`flex scroll-mt-4 flex-col gap-2 p-4 target:bg-coral/10 ${i.soldOut ? "opacity-60" : ""}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-semibold">

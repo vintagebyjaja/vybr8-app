@@ -14,6 +14,8 @@ import { birthdayStatus, formatMonthDay, parseYmd, todayIn } from "@/domain/birt
 import { ActiveVybeCard } from "@/components/home/ActiveVybeCard";
 import { QuickTiles } from "@/components/home/QuickTiles";
 import { WhatToEatCard } from "@/components/home/WhatToEatCard";
+import { CraveZoneHero } from "@/components/cravezone/CraveZoneHero";
+import { getCravingCategories } from "@/server/cravezone";
 import { findCity } from "@/domain/map/map";
 import { ACTIVITY_LEVELS, DAY_PARTS } from "@/domain/health/health";
 import { getActiveVybe, getRhythm, nowFor } from "@/server/health";
@@ -41,10 +43,11 @@ export default async function HomePage({ searchParams }: Search) {
   const tz = findCity(citySlug).timezone;
   const rhythm = viewer ? await getRhythm(viewer.id) : null;
   const now = rhythm ? nowFor(rhythm, tz) : null;
-  const [page, map, active] = await Promise.all([
+  const [page, map, active, cravings] = await Promise.all([
     getFeed(feed === "following" && viewer ? { kind: "following", viewerId: viewer.id } : { kind: "creators" }, before),
     viewer && citySlug ? getMapData(citySlug, viewer) : Promise.resolve(null),
     viewer && now ? getActiveVybe(viewer.id, now.day, tz, 8) : Promise.resolve(null),
+    getCravingCategories(),
   ]);
   const ci = active?.checkin ?? null;
 
@@ -131,6 +134,8 @@ export default async function HomePage({ searchParams }: Search) {
           ))}
         </section>
       )}
+
+      <CraveZoneHero categories={cravings} from="home" />
 
       <section aria-labelledby="timeline-h" className="mx-auto flex w-full max-w-xl flex-col gap-4">
         <h2 id="timeline-h" className="text-xl font-bold">{viewer ? "Your timeline" : "Fresh from VYBR8 creators"}</h2>

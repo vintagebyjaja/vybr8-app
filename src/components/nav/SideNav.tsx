@@ -46,6 +46,7 @@ export function SideNav() {
       </Link>
       <div className="flex flex-col gap-2 text-sm font-semibold">
         <Link href="/eat" className="text-muted hover:text-text">What Should I Eat?</Link>
+        <Link href="/cravezone" className="font-semibold text-coral hover:text-text">CraveZone 🍓</Link>
         <Link href="/groups" className="text-muted hover:text-text">Groups &amp; Family</Link>
         <Link href="/charts" className="text-muted hover:text-text">Charts</Link>
         <Link href="/chefs" className="text-muted hover:text-text">Chefs</Link>
