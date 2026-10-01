@@ -37,6 +37,12 @@ export function CraveMap({ city, pins, mapboxToken }: { city: City; pins: CraveP
             })}
           </div>
         )}
+        {!street && mapboxToken && (
+          <button type="button" onClick={() => setStreet(true)}
+            className="absolute right-2 top-2 z-20 rounded-full border border-line bg-surface/90 px-3 py-1.5 text-xs font-semibold text-text shadow-lg backdrop-blur hover:bg-surface-2">
+            Street map
+          </button>
+        )}
         {!pins.length && <p className="absolute inset-0 grid place-items-center p-6 text-center text-sm text-muted">Nothing to pin yet for this craving here.</p>}
       </div>
       {current && (

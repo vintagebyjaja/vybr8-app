@@ -87,10 +87,20 @@ export function StreetMap({ token, bounds, pins, onFail }: { token: string; boun
           pitchWithRotate: false,
         });
         created.addControl(new lib.NavigationControl({ showCompass: false }), "top-right");
-        // If the street map hasn't drawn after 15 seconds (blocked token, slow network), fall back to the frequency map.
-        giveUp = window.setTimeout(() => failed.current(), 15000);
+        // Fall back to the frequency map only if Mapbox never even got its map style (blocked token, no network).
+        // Once the style arrives the map works; tiles keep streaming in on slow phones, so we don't give up on them.
+        // A hidden tab doesn't draw, so the clock only runs while the page is on screen.
+        let waited = 0;
+        const tick = () => {
+          if (!document.hidden) waited += 1;
+          if (waited >= 30) failed.current();
+          else giveUp = window.setTimeout(tick, 1000);
+        };
+        giveUp = window.setTimeout(tick, 1000);
+        const ready = () => window.clearTimeout(giveUp);
+        created.once("style.load", ready);
         created.once("load", () => {
-          window.clearTimeout(giveUp);
+          ready();
           created?.resize();
         });
         // Pins shrink to small icons when the whole city is showing, and grow as you zoom in.

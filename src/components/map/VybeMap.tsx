@@ -323,6 +323,12 @@ export function VybeMap({ data, cities, mapboxToken }: { data: MapData; cities: 
             )}
           </div>
         )}
+        {!street && mapboxToken && (
+          <button type="button" onClick={() => setStreet(true)}
+            className="absolute right-2 top-2 z-20 rounded-full border border-line bg-surface/90 px-3 py-1.5 text-xs font-semibold text-text shadow-lg backdrop-blur hover:bg-surface-2">
+            Street map
+          </button>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted">
