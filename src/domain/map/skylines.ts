@@ -89,6 +89,36 @@ export const SKYLINES: Record<string, { back: Shape[]; front: Shape[] }> = {
       { t: "path", d: "M0 160 Q70 160 148 104 Q200 168 252 104 Q330 160 400 160", stroke: 1.5 },
     ],
   },
+  // Two black-and-antenna towers (one with twin masts) and a tapered one, over the lake.
+  chicago: {
+    back: [tower(24, 120, 26), tower(56, 104, 22), tower(318, 112, 26), tower(350, 128, 30)],
+    front: [
+      tower(84, 112, 26), { t: "rect", x: 116, y: 52, w: 34, lit: true }, { t: "rect", x: 122, y: 30, w: 2, h: 22 }, { t: "rect", x: 142, y: 30, w: 2, h: 22 },
+      tower(156, 96, 24), { t: "poly", pts: "186,200 192,74 220,74 226,200" }, { t: "rect", x: 204, y: 54, w: 2, h: 20 },
+      tower(232, 88, 26), tower(262, 108, 28), tower(294, 124, 22), { t: "rect", x: 0, y: 182, w: 400, h: 3 },
+    ],
+  },
+  // A cylinder tower, a tall crowned tower and palms along the street.
+  la: {
+    back: [tower(30, 132, 28), tower(64, 118, 24), tower(306, 122, 28), tower(338, 138, 26)],
+    front: [
+      tower(96, 116, 26), { t: "rect", x: 128, y: 86, w: 24, lit: true }, { t: "path", d: "M128 86 Q140 76 152 86" },
+      { t: "rect", x: 160, y: 50, w: 30, lit: true }, { t: "poly", pts: "160,50 175,40 190,50" },
+      tower(196, 92, 26), tower(228, 112, 24), tower(258, 100, 28),
+      { t: "path", d: "M24 200 Q26 160 20 120 M20 120 Q6 116 0 124 M20 120 Q34 112 42 120 M20 120 Q16 106 6 104", stroke: 3 },
+      { t: "path", d: "M372 200 Q370 160 376 124 M376 124 Q362 120 356 128 M376 124 Q390 116 398 124 M376 124 Q372 110 362 108", stroke: 3 },
+    ],
+  },
+  // Stepped spire towers and City Hall's tower with its rounded top.
+  philly: {
+    back: [tower(28, 124, 26), tower(60, 110, 22), tower(312, 116, 28), tower(344, 132, 28)],
+    front: [
+      tower(88, 120, 24), { t: "rect", x: 118, y: 72, w: 30, lit: true }, { t: "poly", pts: "118,72 133,44 148,72" },
+      { t: "rect", x: 156, y: 58, w: 28, lit: true }, { t: "poly", pts: "156,58 170,30 184,58" },
+      { t: "rect", x: 196, y: 120, w: 40, lit: true }, { t: "rect", x: 208, y: 80, w: 16, lit: true }, { t: "path", d: "M208 80 Q216 62 224 80" }, { t: "rect", x: 215, y: 52, w: 2, h: 12 },
+      tower(244, 98, 26), tower(276, 112, 26),
+    ],
+  },
   // Bayfront towers over the water, a palm on each side.
   miami: {
     back: [tower(20, 128, 24), tower(48, 112, 22), tower(300, 116, 26), tower(330, 104, 22), tower(356, 130, 28)],

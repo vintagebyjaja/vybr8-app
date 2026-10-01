@@ -15,6 +15,9 @@ export const CITIES: readonly City[] = [
   { slug: "dc", name: "Washington, DC", region: "DC", timezone: "America/New_York", center: { lat: 38.9072, lng: -77.0369 }, bounds: { north: 38.995, south: 38.8, east: -76.91, west: -77.12 } },
   { slug: "brooklyn", name: "Brooklyn", region: "NY", timezone: "America/New_York", center: { lat: 40.6782, lng: -73.9442 }, bounds: { north: 40.74, south: 40.57, east: -73.85, west: -74.04 } },
   { slug: "miami", name: "Miami", region: "FL", timezone: "America/New_York", center: { lat: 25.7617, lng: -80.1918 }, bounds: { north: 25.87, south: 25.7, east: -80.12, west: -80.32 } },
+  { slug: "chicago", name: "Chicago", region: "IL", timezone: "America/Chicago", center: { lat: 41.8781, lng: -87.6298 }, bounds: { north: 42.02, south: 41.74, east: -87.52, west: -87.8 } },
+  { slug: "la", name: "Los Angeles", region: "CA", timezone: "America/Los_Angeles", center: { lat: 34.0522, lng: -118.2437 }, bounds: { north: 34.2, south: 33.93, east: -118.1, west: -118.5 } },
+  { slug: "philly", name: "Philadelphia", region: "PA", timezone: "America/New_York", center: { lat: 39.9526, lng: -75.1652 }, bounds: { north: 40.07, south: 39.88, east: -75.05, west: -75.28 } },
 ];
 
 export const DEFAULT_CITY = "charlotte";

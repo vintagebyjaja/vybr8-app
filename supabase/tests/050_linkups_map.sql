@@ -18,7 +18,7 @@ delete from public.user_roles where user_id = (select jaja from ids);
 
 -- ── Cities and statuses ───────────────────────────────────────────────
 select tests.anon();
-select tests.ok((select count(*) from public.cities) = 8, 'the 8 launch cities are public');
+select tests.ok((select count(*) from public.cities) = 11, 'the 11 launch cities are public');
 select tests.ok((select count(*) from public.vybe_statuses) = 0, 'signed-out visitors see no one''s status');
 select tests.logout(); select tests.login((select jaja from ids));
 select tests.ok((select count(*) from public.vybe_statuses) = 2, 'friends see each other''s vybe status');

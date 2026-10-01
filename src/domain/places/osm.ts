@@ -15,7 +15,7 @@ export type OsmElement = {
 
 export type ImportRow = {
   ext: string; name: string; kind: string; lat: number; lng: number;
-  address: string | null; postal: string | null; website: string | null; phone: string | null;
+  address: string | null; postal: string | null; town?: string | null; state?: string | null; website: string | null; phone: string | null;
   brand: string | null; cuisines: string[]; hours: { weekday: number; opens: string; closes: string }[];
   links: Partial<Record<LinkKind, string>>;
 };
@@ -166,6 +166,8 @@ export function toImportRow(e: OsmElement): ImportRow | null {
     lat, lng,
     address: street ? (num ? `${num} ${street}` : street).slice(0, 160) : null,
     postal: t["addr:postcode"]?.trim().slice(0, 10) || null,
+    town: t["addr:city"]?.trim().slice(0, 60) || null,
+    state: /^[A-Za-z]{2}$/.test(t["addr:state"]?.trim() ?? "") ? t["addr:state"]!.trim().toUpperCase() : null,
     website: cleanWebsite(t.website ?? t["contact:website"]),
     phone: (t.phone ?? t["contact:phone"])?.split(";")[0]?.trim().slice(0, 40) || null,
     brand: t.brand?.trim().slice(0, 120) || null,
@@ -176,7 +178,7 @@ export function toImportRow(e: OsmElement): ImportRow | null {
 }
 
 /** Default cap on new places per city per import run, so a city starts curated instead of crowded. */
-export const DEFAULT_IMPORT_LIMIT = 250;
+export const DEFAULT_IMPORT_LIMIT = 100;
 
 /** Tile indexes ordered from the middle of the city outward, so a capped import fills downtown first. */
 export function tilesCenterOut(n = TILE_GRID): number[] {

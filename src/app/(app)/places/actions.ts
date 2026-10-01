@@ -29,6 +29,8 @@ const placeSchema = z.object({
   address: z.string().trim().min(5).max(160),
   branch: optText(80),
   postal: optText(12),
+  town: optText(60),
+  state: optText(2),
   website: optText(300),
   lat: optNum,
   lng: optNum,
@@ -45,6 +47,7 @@ export async function submitPlace(form: FormData) {
   const { data, error } = await supabase.rpc("submit_place", {
     p_name: d.name, p_kind: d.kind, p_city_slug: d.city, p_address: d.address, p_branch: d.branch ?? null, p_postal: d.postal ?? null,
     p_lat: d.lat ?? null, p_lng: d.lng ?? null, p_website: website ?? null, p_i_own_it: d.own === "on",
+    p_town: d.town ?? null, p_state: d.state ? d.state.toUpperCase() : null,
   });
   if (error) {
     log.warn("places.submit_failed", { code: error.code });

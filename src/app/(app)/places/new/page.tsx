@@ -63,10 +63,11 @@ export default async function AddPlacePage({ searchParams }: { searchParams: Pro
             </select>
           </div>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="city" className="text-sm font-semibold">City</label>
+            <label htmlFor="city" className="text-sm font-semibold">VYBR8 city</label>
             <select id="city" name="city" required className={input} defaultValue={city}>
               {CITIES.map((c) => <option key={c.slug} value={c.slug}>{c.name}</option>)}
             </select>
+            <p className="text-xs text-faint">In a nearby town? Pick the closest city (Concord → Charlotte).</p>
           </div>
         </div>
 
@@ -81,6 +82,14 @@ export default async function AddPlacePage({ searchParams }: { searchParams: Pro
             <label htmlFor="branch" className="text-sm font-semibold">Location name <span className="font-normal text-faint">(optional)</span></label>
             <input id="branch" name="branch" maxLength={80} placeholder="South End" className={input} />
             <p className="text-xs text-faint">Leave blank and we&rsquo;ll use the street name.</p>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="town" className="text-sm font-semibold">Town <span className="font-normal text-faint">(if not the city itself)</span></label>
+            <input id="town" name="town" maxLength={60} placeholder="Concord" autoComplete="address-level2" className={input} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="state" className="text-sm font-semibold">State <span className="font-normal text-faint">(optional)</span></label>
+            <input id="state" name="state" maxLength={2} placeholder="NC" autoComplete="address-level1" className={`${input} uppercase`} />
           </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="postal" className="text-sm font-semibold">ZIP <span className="font-normal text-faint">(optional)</span></label>
