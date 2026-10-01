@@ -21,7 +21,7 @@ import { getViewerCity } from "@/server/map";
 
 export const metadata = { title: "What Should I Eat?" };
 
-const PHOTOS = new Set(["charlotte", "atlanta", "nashville", "houston", "phoenix", "dc", "brooklyn", "miami"]);
+const PHOTOS = new Set(["charlotte", "atlanta", "nashville", "houston", "phoenix", "dc", "brooklyn", "miami", "chicago", "la"]);
 const chip = (on: boolean) => `shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${on ? "bg-text text-ink" : "border border-line text-muted hover:text-text"}`;
 
 type Search = { searchParams: Promise<{ city?: string; lat?: string; lng?: string; type?: string; cuisine?: string; q?: string; open?: string; sort?: string; page?: string; saved?: string; closed?: string; badge?: string; list?: string }> };
