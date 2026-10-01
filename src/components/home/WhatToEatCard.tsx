@@ -3,7 +3,7 @@ import Link from "next/link";
 import { CitySkyline } from "@/components/home/CitySkyline";
 
 // Real city photos (1400×700 WebP in /public/cities). Any city without one falls back to the drawn skyline.
-const PHOTOS = new Set(["charlotte", "atlanta", "nashville", "houston", "phoenix", "dc", "brooklyn", "miami", "chicago", "la"]);
+const PHOTOS = new Set(["charlotte", "atlanta", "nashville", "houston", "phoenix", "dc", "brooklyn", "miami", "chicago", "la", "philly"]);
 
 /** "What Should I Eat?" hero over the selected city. No restaurant is featured: the vybers decide who's best. */
 export function WhatToEatCard({ href, city, cityName }: { href: string; city: string; cityName: string }) {
