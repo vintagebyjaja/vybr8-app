@@ -7,7 +7,7 @@ import { ACTIVITY_LEVELS, ACTIVITY_OPTIONS, DAY_PARTS, FOOD_KINDS, FOOD_SLOTS, S
 import { createClient } from "@/lib/supabase/server";
 import { requireViewer } from "@/server/auth";
 import { log } from "@/server/log";
-import { estimateNutrition } from "@/server/nutrition-ai";
+import { FAILURE_HELP, estimateNutritionDetailed, type EstimateFailure } from "@/server/nutrition-ai";
 
 const back = (path: string, params: Record<string, string>): never => {
   redirect(`${path}${path.includes("?") ? "&" : "?"}${new URLSearchParams(params)}`);
@@ -158,6 +158,7 @@ export async function logFood(form: FormData) {
     ounces: z.preprocess((v) => (v === "" || v == null ? undefined : Number(v)), z.number().gt(0).max(200).optional()),
     calories: z.preprocess((v) => (v === "" || v == null ? undefined : Number(v)), z.number().int().min(0).max(5000).optional()),
     protein: optNum(500),
+    place: z.preprocess(blank, z.uuid().optional()),
   }).safeParse(Object.fromEntries(form));
   if (!p.success) back("/health", { date, e: "Pick food, drink or water, what time of day, and what it was." });
   const d = p.data!;
@@ -166,12 +167,14 @@ export async function logFood(form: FormData) {
   if (d.kind === "water" && !d.ounces) back("/health", { date, e: "How many ounces of water?" });
   const supabase = await createClient();
   await ensureGoals(supabase, viewer.id);
+  const placeName = d.place ? await placeNameFor(supabase, d.place) : null;
   // No calories typed in? VYBR8 estimates them (always labeled as an estimate).
   const est = d.kind !== "water" && d.calories == null && (await underEstimateCap(supabase, viewer.id, d.date))
-    ? await estimateNutrition({ kind: d.kind, name: name!, amount: d.amount, ounces: d.ounces })
+    ? (await estimateNutritionDetailed({ kind: d.kind, name: name!, amount: d.amount, ounces: d.ounces, place: placeName })).estimate
     : null;
   const { error } = await supabase.from("food_logs").insert({
     user_id: viewer.id, day: d.date, kind: d.kind, time_slot: d.slot, name, amount: d.kind === "water" ? null : (d.amount ?? null),
+    business_id: placeName ? d.place : null,
     ounces: d.ounces ?? null,
     calories: d.kind === "water" ? 0 : (d.calories ?? est?.calories ?? null),
     protein_g: d.protein ?? est?.protein ?? null, carbs_g: est?.carbs ?? null, fat_g: est?.fat ?? null,
@@ -183,6 +186,57 @@ export async function logFood(form: FormData) {
   }
   revalidatePath("/health");
   back("/health", { date: d.date, saved: d.kind });
+}
+
+async function placeNameFor(supabase: Awaited<ReturnType<typeof createClient>>, id: string): Promise<string | null> {
+  const { data } = await supabase.from("businesses").select("name").eq("id", id).is("deleted_at", null).maybeSingle();
+  return (data as { name: string } | null)?.name ?? null;
+}
+
+/** What members see when an estimate fails; the founder and admins also see why, so it can be fixed. */
+function estimateError(viewer: { platformRoles: string[] }, failure: EstimateFailure | null): string {
+  const base = "Couldn't estimate that one. Add the calories yourself if you know them.";
+  return viewer.platformRoles.includes("admin") && failure ? `${base} (Admin: ${FAILURE_HELP[failure]})` : base;
+}
+
+/** "Ate out?" Log a dish straight from a restaurant's VYBR8 menu. */
+export async function logFromMenu(form: FormData) {
+  const viewer = await requireViewer("/health");
+  const p = z.object({
+    item: z.uuid(),
+    date: z.string().refine((d) => isYmd(d)),
+    slot: z.enum(slots),
+    portion: z.preprocess((v) => (v == null || v === "" ? 1 : Number(v)), z.number().min(0.25).max(3)),
+    back: z.string().regex(/^\/health\/ate-out\?[\w=&%.+-]*$/),
+  }).safeParse(Object.fromEntries(form));
+  if (!p.success) back("/health", { e: "Pick when you had it, then tap the dish." });
+  const d = p.data!;
+  const supabase = await createClient();
+  const { data: row } = await supabase.from("menu_items").select("id, name, category, business_id, business:businesses ( name )").eq("id", d.item).maybeSingle();
+  const item = row as unknown as { id: string; name: string; category: "food" | "drink"; business_id: string; business: { name: string } | null } | null;
+  if (!item) back(d.back, { e: "That dish isn't on the menu anymore." });
+  await ensureGoals(supabase, viewer.id);
+  const { data: cal } = await supabase.rpc("menu_calories", { p_business: item!.business_id });
+  const known = ((cal ?? []) as { menu_item_id: string; calories: number; source: string }[]).find((c) => c.menu_item_id === item!.id);
+  const est = known ? null
+    : (await underEstimateCap(supabase, viewer.id, d.date))
+      ? (await estimateNutritionDetailed({ kind: item!.category, name: item!.name, place: item!.business?.name ?? null })).estimate
+      : null;
+  const scale = (n: number | null | undefined) => (n == null ? null : Math.round(n * d.portion * 10) / 10);
+  const { error } = await supabase.from("food_logs").insert({
+    user_id: viewer.id, day: d.date, kind: item!.category, time_slot: d.slot, name: item!.name.slice(0, 120),
+    amount: d.portion === 1 ? null : d.portion === 0.5 ? "half (split it)" : `${d.portion}×`,
+    portion: d.portion, menu_item_id: item!.id, business_id: item!.business_id,
+    calories: known ? Math.round(known.calories * d.portion) : est ? Math.round(est.calories * d.portion) : null,
+    protein_g: known ? null : scale(est?.protein), carbs_g: known ? null : scale(est?.carbs), fat_g: known ? null : scale(est?.fat),
+    nutrition_source: known ? known.source : est ? "estimated" : "unknown",
+  });
+  if (error) {
+    log.warn("health.menu_log_failed", { code: error.code });
+    back(d.back, { e: "That didn't save. Try again." });
+  }
+  revalidatePath("/health");
+  back(d.back, { added: item!.name.slice(0, 60) });
 }
 
 /** Up to 40 AI estimates per person per day keeps costs predictable. */
@@ -199,14 +253,15 @@ export async function estimateFood(form: FormData) {
   const date = String(form.get("date") ?? "");
   if (!id.success) return;
   const supabase = await createClient();
-  const { data: row } = await supabase.from("food_logs").select("kind, name, amount, ounces, calories, menu_item_id").eq("id", id.data).maybeSingle();
-  const r = row as { kind: string; name: string; amount: string | null; ounces: number | string | null; calories: number | null; menu_item_id: string | null } | null;
-  if (!r || r.kind === "water" || r.calories != null || r.menu_item_id) back("/health", isYmd(date) ? { date } : {});
-  const est = (await underEstimateCap(supabase, viewer.id, date))
-    ? await estimateNutrition({ kind: r!.kind === "drink" ? "drink" : "food", name: r!.name, amount: r!.amount, ounces: r!.ounces == null ? null : Number(r!.ounces) })
+  const { data: row } = await supabase.from("food_logs").select("kind, name, amount, ounces, calories, place:businesses ( name )").eq("id", id.data).maybeSingle();
+  const r = row as unknown as { kind: string; name: string; amount: string | null; ounces: number | string | null; calories: number | null; place: { name: string } | null } | null;
+  if (!r || r.kind === "water" || r.calories != null) back("/health", isYmd(date) ? { date } : {});
+  const res = (await underEstimateCap(supabase, viewer.id, date))
+    ? await estimateNutritionDetailed({ kind: r!.kind === "drink" ? "drink" : "food", name: r!.name, amount: r!.amount, ounces: r!.ounces == null ? null : Number(r!.ounces), place: r!.place?.name ?? null })
     : null;
-  if (!est) back("/health", { ...(isYmd(date) ? { date } : {}), e: "Couldn't estimate that one. Add the calories yourself if you know them." });
-  await supabase.from("food_logs").update({ calories: est!.calories, protein_g: est!.protein, carbs_g: est!.carbs, fat_g: est!.fat, nutrition_source: "estimated" }).eq("id", id.data);
+  if (!res?.estimate) back("/health", { ...(isYmd(date) ? { date } : {}), e: res ? estimateError(viewer, res.failure) : "That's a lot of estimates today. Add calories yourself for the rest." });
+  const est = res!.estimate!;
+  await supabase.from("food_logs").update({ calories: est.calories, protein_g: est.protein, carbs_g: est.carbs, fat_g: est.fat, nutrition_source: "estimated" }).eq("id", id.data);
   revalidatePath("/health");
   back("/health", isYmd(date) ? { date, saved: "estimate" } : { saved: "estimate" });
 }

@@ -15,7 +15,6 @@ import { can } from "@/server/entitlements";
 import { getActiveVybe, getRhythm, nowFor } from "@/server/health";
 import { getViewerCity } from "@/server/map";
 import { checkIn, estimateFood, logFood, logSleep, removeFood } from "./actions";
-import { nutritionAiEnabled } from "@/server/nutrition-ai";
 import { CraveZoneHero } from "@/components/cravezone/CraveZoneHero";
 import { getCravingCategories } from "@/server/cravezone";
 
@@ -48,7 +47,7 @@ export default async function HealthPage({ searchParams }: Search) {
   const n = av.nutrition;
   const calTarget = n.target?.calories ?? null;
   const isToday = date === today;
-  const ai = nutritionAiEnabled();
+  const ai = true;   // the built-in food table always works; the AI covers everything else when its key is set
   const nowSlot = isToday ? slotForHour(bodyHour(now.clock.minutes, rhythm.wake)) : null;
   const part: DayPart = DAY_PARTS.some((x) => x.key === sp.part) ? (sp.part as DayPart) : isToday ? now.part : "night";
   const partInfo = DAY_PARTS.find((x) => x.key === part)!;
@@ -208,11 +207,11 @@ export default async function HealthPage({ searchParams }: Search) {
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-semibold">{j.name}</p>
                             <p className="text-xs text-muted tabular-nums">
-                              {[j.amount, j.ounces != null ? `${j.ounces} oz` : null, j.kind !== "water" && j.calories != null ? `${j.estimated ? "~" : ""}${j.calories.toLocaleString()} cal${j.estimated ? " (estimate)" : ""}` : null, j.fromMenu ? "from a VYBR8 menu" : null]
+                              {[j.amount, j.ounces != null ? `${j.ounces} oz` : null, j.kind !== "water" && j.calories != null ? `${j.estimated ? "~" : ""}${j.calories.toLocaleString()} cal${j.estimated ? " (estimate)" : ""}` : null, j.place ? `from ${j.place.name}` : j.fromMenu ? "from a VYBR8 menu" : null]
                                 .filter(Boolean).join(" · ") || (j.kind === "drink" ? "Drink" : "Food")}
                             </p>
                           </div>
-                          {ai && j.kind !== "water" && j.calories == null && !j.fromMenu && (
+                          {ai && j.kind !== "water" && j.calories == null && (
                             <form action={estimateFood}>
                               <input type="hidden" name="id" value={j.id} /><input type="hidden" name="date" value={date} />
                               <button className="min-h-9 rounded-full border border-mint/50 px-3 text-xs font-bold text-mint hover:bg-mint/10">Estimate cal</button>
@@ -231,6 +230,16 @@ export default async function HealthPage({ searchParams }: Search) {
             ) : (
               <p className="text-sm text-muted">Nothing logged {isToday ? "yet today" : "for this day"}. Add water, a drink or food and when you had it.</p>
             )}
+
+            <Link href={`/health/ate-out?${new URLSearchParams({ date, ...(nowSlot ? { slot: nowSlot } : {}) })}`}
+              className="flex items-center gap-3 rounded-2xl border border-orange/40 bg-orange/10 p-4 hover:bg-orange/15">
+              <span aria-hidden className="text-2xl">🍽️</span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-bold">Ate out?</span>
+                <span className="block text-sm text-muted">Pick the restaurant and tap what you had from its menu.</span>
+              </span>
+              <span aria-hidden className="text-muted">›</span>
+            </Link>
 
             <details className="group rounded-2xl border border-line bg-ink p-4" open={av.journal.length === 0}>
               <summary className="cursor-pointer list-none text-center font-bold text-mint">+ Add food or a drink</summary>
