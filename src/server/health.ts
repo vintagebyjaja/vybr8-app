@@ -109,17 +109,17 @@ export async function getActiveVybe(userId: string, date: string, tz: string, hi
   type Log = {
     id: string; kind: FoodKind; name: string; amount: string | null; ounces: number | string | null; time_slot: FoodSlot | null; day: string | null; menu_item_id: string | null;
     calories: number | null; protein_g: number | string | null; carbs_g: number | string | null; fat_g: number | string | null; nutrition_source: string | null; logged_at: string;
-    place: { name: string; slug: string } | null;
+    place: { name: string; slug: string } | { name: string; slug: string }[] | null;   // Supabase types embeds as arrays
   };
   // Journal rows carry their day; older rows (dish pages, Vybe Plan) count toward the person's day by when they were logged.
-  const logsToday = [...((dated ?? []) as Log[]), ...((undated ?? []) as Log[]).filter((l) => {
+  const logsToday = [...((dated ?? []) as unknown as Log[]), ...((undated ?? []) as unknown as Log[]).filter((l) => {
     const c = clockIn(tz, new Date(l.logged_at));
     return vybeDay(c.ymd, c.minutes, rhythm.wake) === date;
   })];
   const journal: JournalEntry[] = logsToday
     .map((l) => ({
       id: l.id, kind: l.kind, name: l.name, amount: l.amount, ounces: l.ounces == null ? null : Number(l.ounces), slot: l.time_slot,
-      calories: l.calories, protein: l.protein_g == null ? null : Number(l.protein_g), fromMenu: !!l.menu_item_id, estimated: l.nutrition_source === "estimated", place: l.place ?? null, at: l.logged_at,
+      calories: l.calories, protein: l.protein_g == null ? null : Number(l.protein_g), fromMenu: !!l.menu_item_id, estimated: l.nutrition_source === "estimated", place: (Array.isArray(l.place) ? l.place[0] : l.place) ?? null, at: l.logged_at,
     }))
     .sort((a, b) => slotIndex(a.slot) - slotIndex(b.slot) || a.at.localeCompare(b.at))
     .map(({ at: _at, ...e }) => e);
