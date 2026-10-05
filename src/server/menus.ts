@@ -22,10 +22,17 @@ export async function getMenu(businessId: string, viewerId: string | null): Prom
   const ids = rows.map((r) => r.id);
   const [{ data: stats }, { data: mine }] = await Promise.all([
     supabase.from("menu_item_stats").select("menu_item_id, avg_score, rating_count").in("menu_item_id", ids),
-    viewerId ? supabase.from("item_ratings").select("menu_item_id, score").eq("user_id", viewerId).in("menu_item_id", ids) : Promise.resolve({ data: [] }),
+    viewerId ? supabase.from("item_ratings").select("menu_item_id, score, rated_on").eq("user_id", viewerId).in("menu_item_id", ids).order("rated_on", { ascending: false }) : Promise.resolve({ data: [] }),
   ]);
   const statBy = new Map(((stats ?? []) as { menu_item_id: string; avg_score: number | null; rating_count: number }[]).map((s) => [s.menu_item_id, s]));
-  const mineBy = new Map(((mine ?? []) as { menu_item_id: string; score: number }[]).map((s) => [s.menu_item_id, Number(s.score)]));
+  // Newest first: the first one per item is your latest visit.
+  const mineBy = new Map<string, { latest: number; latestDay: string; sum: number; count: number }>();
+  for (const m of (mine ?? []) as { menu_item_id: string; score: number; rated_on: string }[]) {
+    const cur = mineBy.get(m.menu_item_id);
+    if (cur) { cur.sum += Number(m.score); cur.count += 1; }
+    else mineBy.set(m.menu_item_id, { latest: Number(m.score), latestDay: m.rated_on, sum: Number(m.score), count: 1 });
+  }
+  const ratingDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());   // matches the database's rating day
   const today = new Date().toISOString().slice(0, 10);
   return rows.map((r) => ({
     id: r.id, name: r.name, description: r.description, category: r.category, section: r.section, dishType: r.dish_type,
@@ -33,7 +40,10 @@ export async function getMenu(businessId: string, viewerId: string | null): Prom
     soldOut: !r.is_available || (!!r.sold_out_until && new Date(r.sold_out_until) > new Date()),
     avgScore: statBy.get(r.id)?.avg_score != null ? Number(statBy.get(r.id)!.avg_score) : null,
     ratingCount: statBy.get(r.id)?.rating_count ?? 0,
-    myScore: mineBy.get(r.id) ?? null,
+    myScore: mineBy.get(r.id)?.latest ?? null,
+    myCount: mineBy.get(r.id)?.count ?? 0,
+    myAvg: mineBy.has(r.id) ? Math.round((mineBy.get(r.id)!.sum / mineBy.get(r.id)!.count) * 10) / 10 : null,
+    myRatedToday: mineBy.get(r.id)?.latestDay === ratingDay,
     chefs: r.credits
       .filter((c) => c.chef && c.verification_status !== "self_reported" && (!c.end_date || c.end_date >= today))
       .map((c) => ({ slug: c.chef!.slug, name: c.chef!.professional_name, type: c.attribution_type })),

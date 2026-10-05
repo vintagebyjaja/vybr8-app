@@ -339,7 +339,9 @@ export default async function VenuePage({ params, searchParams }: Params) {
       <section aria-labelledby="menu-h" className="flex flex-col gap-3">
         <h2 id="menu-h" className="text-xl font-bold">Menu &amp; VYBR8 scores</h2>
         {menu.length ? (
-          <MenuList items={menu} signedIn={!!viewer} returnTo={`/venue/${venue.slug}`} ranks={ranks.items} />
+          <MenuList items={menu} signedIn={!!viewer} returnTo={`/venue/${venue.slug}`} ranks={ranks.items}
+            partial={!venue.is_claimed}
+            fullMenuUrl={(links.get(venue.id as string) ?? []).find((l) => l.kind === "menu")?.url ?? (venue.website as string | null) ?? null} />
         ) : (
           <div className="flex flex-col gap-2 rounded-2xl border border-dashed border-line p-5 text-sm text-muted">
             <p>No menu on VYBR8 yet. {venue.is_claimed ? "The owner can add it from their business page." : "Owners add their full menu, prices and nutrition when they claim this place."}</p>

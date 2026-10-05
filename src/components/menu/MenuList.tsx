@@ -5,11 +5,29 @@ import { RankBadge } from "@/components/charts/RankBadge";
 import type { RankBadge as Badge } from "@/domain/charts/charts";
 
 /** A menu with VYBR8 scores per item, sold-out state, chef credits and a Deep Dive link. */
-export function MenuList({ items, signedIn, returnTo, ranks = {} }: { items: MenuItemView[]; signedIn: boolean; returnTo: string; ranks?: Record<string, Badge> }) {
+/**
+ * `partial`: a menu the VYBR8 Team added from photos (the place hasn't claimed it yet). It's labeled as part of
+ * the menu, and points to the restaurant's own site for the full menu and current prices.
+ */
+export function MenuList({ items, signedIn, returnTo, ranks = {}, partial = false, fullMenuUrl = null }: {
+  items: MenuItemView[]; signedIn: boolean; returnTo: string; ranks?: Record<string, Badge>; partial?: boolean; fullMenuUrl?: string | null;
+}) {
   if (!items.length) return <p className="rounded-2xl border border-dashed border-line p-5 text-sm text-muted">No menu on VYBR8 yet.</p>;
   const sections = [...new Set(items.map((i) => i.section ?? (i.category === "drink" ? "Drinks" : "Menu")))];
+  const fullMenu = fullMenuUrl && (
+    <a href={fullMenuUrl} target="_blank" rel="noopener noreferrer"
+      className="inline-flex min-h-11 items-center justify-center rounded-full border border-line px-4 text-sm font-bold text-text hover:bg-surface-2">
+      Visit their website for the full menu ↗
+    </a>
+  );
   return (
     <div className="flex flex-col gap-6">
+      {partial && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
+          <p><b className="text-text">Part of the menu.</b> Added by the VYBR8 Team. Prices can change{fullMenuUrl ? ", so check their site for everything they serve." : "."}</p>
+          {fullMenu}
+        </div>
+      )}
       {sections.map((s) => (
         <section key={s} aria-label={s} className="flex flex-col gap-2">
           <h3 className="text-sm font-bold uppercase tracking-wide text-faint">{s}</h3>
@@ -41,7 +59,7 @@ export function MenuList({ items, signedIn, returnTo, ranks = {} }: { items: Men
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  {signedIn ? <RateItem itemId={i.id} itemName={i.name} myScore={i.myScore} returnTo={returnTo} /> : <Link href={`/auth/sign-in?next=${encodeURIComponent(returnTo)}`} className="text-xs font-semibold text-sky">Sign in to rate</Link>}
+                  {signedIn ? <RateItem itemId={i.id} itemName={i.name} myScore={i.myScore} myCount={i.myCount} myAvg={i.myAvg} ratedToday={i.myRatedToday} returnTo={returnTo} /> : <Link href={`/auth/sign-in?next=${encodeURIComponent(returnTo)}`} className="text-xs font-semibold text-sky">Sign in to rate</Link>}
                   <Link href={`/max/deep-dive/${i.id}`} className="min-h-9 rounded-full px-3 py-2 text-xs font-bold text-coral hover:bg-surface-2">DEEP DIVE →</Link>
                 </div>
               </li>
@@ -49,6 +67,7 @@ export function MenuList({ items, signedIn, returnTo, ranks = {} }: { items: Men
           </ul>
         </section>
       ))}
+      {partial && fullMenu && <div className="flex justify-center">{fullMenu}</div>}
     </div>
   );
 }

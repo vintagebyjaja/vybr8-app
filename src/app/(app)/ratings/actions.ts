@@ -6,7 +6,10 @@ import { createClient } from "@/lib/supabase/server";
 import { requireViewer } from "@/server/auth";
 import { safeNext } from "@/server/safe-redirect";
 
-/** Rating is always free. The database re-checks the item is visible (and 21+ for alcohol). */
+/**
+ * Rating is always free. The database re-checks the item is visible (and 21+ for alcohol).
+ * Every visit can be its own rating (one per dish per day); rating again the same day updates that day's score.
+ */
 const itemSchema = z.object({ itemId: z.uuid(), score: z.coerce.number().min(0).max(10), note: z.string().trim().max(500).optional(), returnTo: z.string().optional() });
 
 export async function rateItem(form: FormData): Promise<void> {
@@ -17,7 +20,7 @@ export async function rateItem(form: FormData): Promise<void> {
   const supabase = await createClient();
   await supabase.from("item_ratings").upsert(
     { menu_item_id: itemId, user_id: viewer.id, score: Math.round(score * 10) / 10, note: note || null },
-    { onConflict: "menu_item_id,user_id" },
+    { onConflict: "menu_item_id,user_id,rated_on" },   // one per dish per day; the day is set by the database
   );
   revalidatePath(safeNext(returnTo, "/"));
 }
