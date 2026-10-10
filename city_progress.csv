@@ -1,0 +1,12 @@
+city,target_restaurants,distinct_restaurants_with_items,menu_items,restaurant_target_met
+Charlotte,100,2,50,False
+Atlanta,50,2,40,False
+Miami,50,1,7,False
+Houston,50,0,0,False
+Chicago,50,1,12,False
+Los Angeles,50,0,0,False
+Brooklyn,50,0,0,False
+Nashville,50,1,5,False
+Washington DC,50,3,51,False
+Phoenix,50,0,0,False
+Philadelphia,50,1,6,False

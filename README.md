@@ -1,21 +1,13 @@
-# VYBR8 — REAL RESTAURANT MENUS, verified first batch
+# VYBR8 restaurant menu expansion — 2026-10-10
 
-Updated 2026-10-10. **64 actual sourced menu items** from **7 location/platform listings** plus one official PDF source. **6 of 11 target markets have priced entries; 5 do not yet.** This is a partial replacement, not a completed 3,582-restaurant database.
+This is a PARTIAL source-linked dataset, not 50 restaurants in every city or 100 restaurants in Charlotte. Targets are restaurant counts, NOT item counts.
 
-## Contents
-- `verified_menu_items.csv` and `.json`: real published item names and observed prices, each with source URL, platform, verification date, category.
-- `restaurants_sources.csv` and `.json`: location/platform references.
-- `markets_status.json`: explicit coverage gaps.
-- `supabase_staging.sql`: staging tables and safe COPY-style import guidance.
+Files: menu_items.csv/json (existing 64 + newly researched menu entries); city_progress.csv (actual progress).
 
-## Data quality rules
-1. Prices are observations, not live guaranteed prices; DoorDash and Uber Eats prices may differ from pickup or dine-in prices.
-2. Records marked `starting_at` are from a published $X+ listing, not a fixed final price.
-3. Restaurant photos **are not included**; no rights to republish source images were established. `photo_url` is intentionally empty.
-4. No fabricated restaurant-specific dishes, photos, ingredients, calories, dietary claims, cocktails, or atmosphere labels.
-5. Preserve platform and location as part of uniqueness. Different Midwood location/platform records are intentionally separate.
-6. The 5 markets without priced records (Atlanta, Houston, Los Angeles, Brooklyn, Phoenix — check `markets_status.json` for exact gaps) are not filled with guesses.
-7. Do not present this file as a full menu for any restaurant; it is a verified *sample* of actual menu items.
+`verification_status=source_linked_prior_batch` means carried forward from the earlier batch, not independently rechecked here. `source_linked_new_batch` means newly collected from published restaurant menus.
 
-## Source priority
-Restaurant official menu > restaurant online ordering > DoorDash/Uber Eats, retaining price type and platform. Before displaying in production, refresh prices and confirm any applicable platform terms, rights, and access.
+`price_usd` is a source-specific menu price, NOT a universal current price. Check location, fulfillment channel and time. Official 2025 PDF pricing is historical and must be refreshed before publishing. Some menu items may be temporarily out of stock.
+
+No restaurant-specific images are included because permission and item identity have not been verified. Do not represent placeholders as real dishes.
+
+No fabricated restaurants or filler rows have been added to reach targets.
