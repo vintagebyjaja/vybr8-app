@@ -1,0 +1,90 @@
+[
+  {
+    "restaurant_id": "charlotte_midwood_smokehouse_-_central",
+    "city": "Charlotte",
+    "restaurant": "Midwood Smokehouse - Central",
+    "address": "1401 Central Ave, Charlotte, NC",
+    "platform": "Official pickup",
+    "source_url": "https://order.midwoodsmokehouse.com/order/midwood-smokehouse-central-1401-central-ave",
+    "source_checked": "2026-10-10",
+    "status": "verified_menu_sample",
+    "notes": "Official pickup menu; do not conflate with DoorDash/Uber Eats pricing"
+  },
+  {
+    "restaurant_id": "charlotte_midwood_smokehouse_-_charlotte_delivery",
+    "city": "Charlotte",
+    "restaurant": "Midwood Smokehouse - Charlotte delivery",
+    "address": "Charlotte, NC",
+    "platform": "DoorDash",
+    "source_url": "https://www.doordash.com/en/store/midwood-smokehouse-charlotte-131969/",
+    "source_checked": "2026-10-10",
+    "status": "verified_menu_sample",
+    "notes": "Delivery prices; specific DoorDash store listing"
+  },
+  {
+    "restaurant_id": "miami_coyo_taco_-_bayside",
+    "city": "Miami",
+    "restaurant": "Coyo Taco - Bayside",
+    "address": "401 Biscayne Blvd, Miami, FL",
+    "platform": "DoorDash",
+    "source_url": "https://www.doordash.com/store/coyo-taco-46140901/",
+    "source_checked": "2026-10-10",
+    "status": "verified_menu_sample",
+    "notes": ""
+  },
+  {
+    "restaurant_id": "nashville_hattie_bs_hot_chicken_-_nashville",
+    "city": "Nashville",
+    "restaurant": "Hattie B's Hot Chicken - Nashville",
+    "address": "Nashville, TN",
+    "platform": "Official menu",
+    "source_url": "https://www.hattieb.com/menu-w-pricing",
+    "source_checked": "2026-10-10",
+    "status": "verified_menu_sample",
+    "notes": "Official page displays location selector; verify branch pricing before publication"
+  },
+  {
+    "restaurant_id": "washington_dc_bens_chili_bowl_-_washington",
+    "city": "Washington DC",
+    "restaurant": "Ben's Chili Bowl - Washington",
+    "address": "Washington, DC",
+    "platform": "DoorDash",
+    "source_url": "https://www.doordash.com/store/ben-s-chili-bowl-washington-235957/",
+    "source_checked": "2026-10-10",
+    "status": "verified_menu_sample",
+    "notes": ""
+  },
+  {
+    "restaurant_id": "chicago_portillos_-_chicago",
+    "city": "Chicago",
+    "restaurant": "Portillo's - Chicago",
+    "address": "Chicago, IL",
+    "platform": "DoorDash",
+    "source_url": "https://www.doordash.com/en/store/portillos-50831/",
+    "source_checked": "2026-10-10",
+    "status": "verified_menu_sample",
+    "notes": ""
+  },
+  {
+    "restaurant_id": "philadelphia_federal_donuts_and_chicken_-_philadelphia",
+    "city": "Philadelphia",
+    "restaurant": "Federal Donuts & Chicken - Philadelphia",
+    "address": "Philadelphia, PA",
+    "platform": "DoorDash",
+    "source_url": "https://www.doordash.com/store/federal-donuts-philadelphia-1016826/",
+    "source_checked": "2026-10-10",
+    "status": "verified_menu_sample",
+    "notes": ""
+  },
+  {
+    "restaurant_id": "charlotte_haberdish",
+    "city": "Charlotte",
+    "restaurant": "Haberdish",
+    "address": "Charlotte, NC",
+    "platform": "Official PDF",
+    "source_url": "https://haberdish.com/wp-content/uploads/2025/05/Haberdish-Dinner-Menu.pdf",
+    "source_checked": "2026-10-10",
+    "status": "source_link_verified_items_not_transcribed",
+    "notes": "Official PDF may be outdated; refresh menu before listing prices"
+  }
+]

@@ -1,0 +1,57 @@
+[
+  {
+    "city": "Charlotte",
+    "verified_item_count": 21,
+    "status": "verified_items_included"
+  },
+  {
+    "city": "Atlanta",
+    "verified_item_count": 0,
+    "status": "not_yet_researched"
+  },
+  {
+    "city": "Miami",
+    "verified_item_count": 7,
+    "status": "verified_items_included"
+  },
+  {
+    "city": "Houston",
+    "verified_item_count": 0,
+    "status": "not_yet_researched"
+  },
+  {
+    "city": "Chicago",
+    "verified_item_count": 12,
+    "status": "verified_items_included"
+  },
+  {
+    "city": "Los Angeles",
+    "verified_item_count": 0,
+    "status": "not_yet_researched"
+  },
+  {
+    "city": "Brooklyn",
+    "verified_item_count": 0,
+    "status": "not_yet_researched"
+  },
+  {
+    "city": "Nashville",
+    "verified_item_count": 5,
+    "status": "verified_items_included"
+  },
+  {
+    "city": "Washington DC",
+    "verified_item_count": 13,
+    "status": "verified_items_included"
+  },
+  {
+    "city": "Phoenix",
+    "verified_item_count": 0,
+    "status": "not_yet_researched"
+  },
+  {
+    "city": "Philadelphia",
+    "verified_item_count": 6,
+    "status": "verified_items_included"
+  }
+]
