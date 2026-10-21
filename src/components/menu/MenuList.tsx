@@ -6,12 +6,13 @@ import type { RankBadge as Badge } from "@/domain/charts/charts";
 
 /** A menu with VYBR8 scores per item, sold-out state, chef credits and a Deep Dive link. */
 /**
- * `partial`: a menu the VYBR8 Team added from photos (the place hasn't claimed it yet). It's labeled as part of
- * the menu, and points to the restaurant's own site for the full menu and current prices.
+ * `notice`: a menu the owner didn't write (a chain's shared menu, an imported menu, or one the Team added).
+ * It's labeled, and points to the restaurant's own site for the full menu and current prices.
  */
-export function MenuList({ items, signedIn, returnTo, ranks = {}, partial = false, fullMenuUrl = null }: {
-  items: MenuItemView[]; signedIn: boolean; returnTo: string; ranks?: Record<string, Badge>; partial?: boolean; fullMenuUrl?: string | null;
+export function MenuList({ items, signedIn, returnTo, ranks = {}, notice = null, fullMenuUrl = null }: {
+  items: MenuItemView[]; signedIn: boolean; returnTo: string; ranks?: Record<string, Badge>; notice?: { title: string; body: string } | null; fullMenuUrl?: string | null;
 }) {
+  const partial = !!notice;
   if (!items.length) return <p className="rounded-2xl border border-dashed border-line p-5 text-sm text-muted">No menu on VYBR8 yet.</p>;
   const sections = [...new Set(items.map((i) => i.section ?? (i.category === "drink" ? "Drinks" : "Menu")))];
   const fullMenu = fullMenuUrl && (
@@ -24,7 +25,7 @@ export function MenuList({ items, signedIn, returnTo, ranks = {}, partial = fals
     <div className="flex flex-col gap-6">
       {partial && (
         <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
-          <p><b className="text-text">Part of the menu.</b> Added by the VYBR8 Team. Prices can change{fullMenuUrl ? ", so check their site for everything they serve." : "."}</p>
+          <p><b className="text-text">{notice!.title}</b> {notice!.body}{fullMenuUrl ? " Check their site for everything they serve." : ""}</p>
           {fullMenu}
         </div>
       )}

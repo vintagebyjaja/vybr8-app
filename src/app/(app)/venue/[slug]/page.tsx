@@ -14,6 +14,7 @@ import { getBirthdayPerks } from "@/server/birthday";
 import { getFeed } from "@/server/posts";
 import { getMenu, getPlaceStats } from "@/server/menus";
 import { MenuList } from "@/components/menu/MenuList";
+import { menuNotice } from "@/domain/menus/menus";
 import { PlaceLinks } from "@/components/places/PlaceLinks";
 import { getPlaceLinks } from "@/server/place-links";
 import { RatePlace } from "@/components/ratings/RatePlace";
@@ -37,7 +38,7 @@ async function loadVenue(slug: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("businesses")
-    .select("id, slug, name, branch_name, kind, description, price_level, website, phone, source, is_demo, is_claimed, status, closed_at, brand_id, brand:brands ( name ), locations:business_locations ( id, label, address_line1, city, city_slug, region, postal_code, is_primary, timezone, hours:business_hours ( weekday, opens_at, closes_at ) )")
+    .select("id, slug, name, branch_name, kind, description, price_level, website, phone, source, is_demo, is_claimed, status, closed_at, brand_id, brand:brands ( name, menu_url ), locations:business_locations ( id, label, address_line1, city, city_slug, region, postal_code, is_primary, timezone, hours:business_hours ( weekday, opens_at, closes_at ) )")
     .eq("slug", slug)
     .is("deleted_at", null)
     .maybeSingle();
@@ -91,7 +92,7 @@ export default async function VenuePage({ params, searchParams }: Params) {
   ]);
   if (venue.kind === "food_truck") redirect(`/food-trucks/${venue.slug}`);
   const locations = (venue.locations ?? []) as { id: string; label: string | null; address_line1: string | null; city: string; city_slug: string | null; region: string; postal_code: string | null; is_primary: boolean; timezone: string; hours: { weekday: number; opens_at: string; closes_at: string }[] | null }[];
-  const brand = (Array.isArray(venue.brand) ? venue.brand[0] : venue.brand) as { name: string } | null;
+  const brand = (Array.isArray(venue.brand) ? venue.brand[0] : venue.brand) as { name: string; menu_url: string | null } | null;
   const isStaff = !!viewer?.platformRoles.length;
   const { data: canEditRaw } = viewer && !isStaff ? await (await createClient()).rpc("can_edit_place", { p_business: venue.id }) : { data: null };
   const canEditHours = isStaff || canEditRaw === true;
@@ -340,8 +341,8 @@ export default async function VenuePage({ params, searchParams }: Params) {
         <h2 id="menu-h" className="text-xl font-bold">Menu &amp; VYBR8 scores</h2>
         {menu.length ? (
           <MenuList items={menu} signedIn={!!viewer} returnTo={`/venue/${venue.slug}`} ranks={ranks.items}
-            partial={!venue.is_claimed}
-            fullMenuUrl={(links.get(venue.id as string) ?? []).find((l) => l.kind === "menu")?.url ?? (venue.website as string | null) ?? null} />
+            notice={menuNotice(menu, { claimed: !!venue.is_claimed, brandName: brand?.name ?? null })}
+            fullMenuUrl={(links.get(venue.id as string) ?? []).find((l) => l.kind === "menu")?.url ?? brand?.menu_url ?? (venue.website as string | null) ?? null} />
         ) : (
           <div className="flex flex-col gap-2 rounded-2xl border border-dashed border-line p-5 text-sm text-muted">
             <p>No menu on VYBR8 yet. {venue.is_claimed ? "The owner can add it from their business page." : "Owners add their full menu, prices and nutrition when they claim this place."}</p>
