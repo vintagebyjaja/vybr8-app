@@ -10,3 +10,4 @@ This is a migration preparation branch, not a verified production deployment.
 6. Test sign-in/out, session cookies, API routes, uploads, server actions and third-party integrations before changing DNS or retiring Netlify.
 
 Cloudflare Workers uses OpenNext, not static Pages output. Next.js version and Node-only libraries must be validated against the installed adapter. PATHD PDF/DOCX parsing especially needs runtime testing. Existing Netlify configuration is intentionally retained until cutover.
+Cloudflare deployment trigger
