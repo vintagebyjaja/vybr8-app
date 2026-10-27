@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import type { RankBadge as Badge } from "@/domain/charts/charts";
 
 /** "#3 Wings in Charlotte": links to the chart it came from. */

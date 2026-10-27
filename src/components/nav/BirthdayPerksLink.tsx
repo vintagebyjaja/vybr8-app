@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { usePathname } from "next/navigation";
 
 /** Top-bar Birthday Perks. Hidden on the founder's own profile, which is for business and admin only. */

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { FOOD_SLOTS, bodyHour, isYmd, slotForHour, type FoodSlot } from "@/domain/health/health";
 import { findCity } from "@/domain/map/map";
 import { PlaceLinks } from "@/components/places/PlaceLinks";

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { PhotoUpload } from "@/components/profile/PhotoUpload";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/server";

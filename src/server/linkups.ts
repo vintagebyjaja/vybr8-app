@@ -91,7 +91,8 @@ export type LinkupDetail = LinkupCard & {
   timezone: string;
   status: "active" | "cancelled";
   isOver: boolean;
-  business: { slug: string; name: string; address: string | null } | null;
+  business: { slug: string; name: string; address: string | null; lat: number | null; lng: number | null } | null;
+  citySlug: string;
   members: { userId: string; username: string; name: string; avatarUrl: string | null; status: string; isHost: boolean }[];
   guests: { id: string; label: string | null; status: string; guestName: string | null }[];
   canChat: boolean;
@@ -101,13 +102,13 @@ export async function getLinkup(id: string, viewer: Viewer): Promise<LinkupDetai
   const supabase = await createClient();
   const { data } = await supabase
     .from("linkups")
-    .select(`${CARD_SELECT}, description, status, business_full:businesses ( slug, name, locations:business_locations ( address_line1, city, region, is_primary ) )`)
+    .select(`${CARD_SELECT}, description, status, business_full:businesses ( slug, name, locations:business_locations ( address_line1, city, region, is_primary, latitude, longitude ) )`)
     .eq("id", id)
     .maybeSingle();
   if (!data) return null;
   const row = data as unknown as Row & {
     description: string | null; status: "active" | "cancelled";
-    business_full: { slug: string; name: string; locations: { address_line1: string | null; city: string; region: string; is_primary: boolean }[] } | null;
+    business_full: { slug: string; name: string; locations: { address_line1: string | null; city: string; region: string; is_primary: boolean; latitude: number | string | null; longitude: number | string | null }[] } | null;
   };
 
   const [{ data: memberRows }, { data: inviteRows }] = await Promise.all([
@@ -131,9 +132,10 @@ export async function getLinkup(id: string, viewer: Viewer): Promise<LinkupDetai
   const isOver = row.status !== "active" || new Date(row.ends_at) < new Date();
   return {
     ...card!,
-    description: row.description, startsAt: row.starts_at, endsAt: row.ends_at, timezone: findCity(row.city_slug).timezone,
+    description: row.description, citySlug: findCity(row.city_slug).slug, startsAt: row.starts_at, endsAt: row.ends_at, timezone: findCity(row.city_slug).timezone,
     status: row.status, isOver,
-    business: row.business_full ? { slug: row.business_full.slug, name: row.business_full.name, address: loc ? [loc.address_line1, loc.city, loc.region].filter(Boolean).join(", ") : null } : null,
+    business: row.business_full ? { slug: row.business_full.slug, name: row.business_full.name, address: loc ? [loc.address_line1, loc.city, loc.region].filter(Boolean).join(", ") : null,
+      lat: loc?.latitude == null ? null : Number(loc.latitude), lng: loc?.longitude == null ? null : Number(loc.longitude) } : null,
     members,
     guests: ((inviteRows ?? []) as { id: string; label: string | null; status: string; guest_name: string | null }[]).map((g) => ({ id: g.id, label: g.label, status: g.status, guestName: g.guest_name })),
     canChat: !isOver && (card!.isHost || me === "going"),

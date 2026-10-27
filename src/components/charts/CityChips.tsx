@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { CITIES } from "@/domain/map/map";
 
 /** City picker for charts: plain links, so it works without JavaScript and each city has its own shareable URL. */

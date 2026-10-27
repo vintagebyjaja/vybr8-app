@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { OSM_ATTRIBUTION, OSM_COPYRIGHT_URL } from "@/domain/places/osm";
 import { openStatus, weekSchedule } from "@/domain/map/hours";
 import { notFound, redirect } from "next/navigation";
@@ -15,6 +15,8 @@ import { getFeed } from "@/server/posts";
 import { getMenu, getPlaceStats } from "@/server/menus";
 import { MenuList } from "@/components/menu/MenuList";
 import { menuNotice } from "@/domain/menus/menus";
+import { TripPlanner } from "@/components/trips/TripPlanner";
+import { publicEnv } from "@/config/public-env";
 import { PlaceLinks } from "@/components/places/PlaceLinks";
 import { getPlaceLinks } from "@/server/place-links";
 import { RatePlace } from "@/components/ratings/RatePlace";
@@ -38,7 +40,7 @@ async function loadVenue(slug: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("businesses")
-    .select("id, slug, name, branch_name, kind, description, price_level, website, phone, source, is_demo, is_claimed, status, closed_at, brand_id, brand:brands ( name, menu_url ), locations:business_locations ( id, label, address_line1, city, city_slug, region, postal_code, is_primary, timezone, hours:business_hours ( weekday, opens_at, closes_at ) )")
+    .select("id, slug, name, branch_name, kind, description, price_level, website, phone, source, is_demo, is_claimed, status, closed_at, brand_id, brand:brands ( name, menu_url ), locations:business_locations ( id, label, address_line1, city, city_slug, region, postal_code, is_primary, timezone, latitude, longitude, hours:business_hours ( weekday, opens_at, closes_at ) )")
     .eq("slug", slug)
     .is("deleted_at", null)
     .maybeSingle();
@@ -91,7 +93,7 @@ export default async function VenuePage({ params, searchParams }: Params) {
     citySlug ? ranksForBusiness(venue.id as string, citySlug, findCity(citySlug).name) : Promise.resolve({ place: null, items: {} }),
   ]);
   if (venue.kind === "food_truck") redirect(`/food-trucks/${venue.slug}`);
-  const locations = (venue.locations ?? []) as { id: string; label: string | null; address_line1: string | null; city: string; city_slug: string | null; region: string; postal_code: string | null; is_primary: boolean; timezone: string; hours: { weekday: number; opens_at: string; closes_at: string }[] | null }[];
+  const locations = (venue.locations ?? []) as { id: string; label: string | null; address_line1: string | null; city: string; city_slug: string | null; region: string; postal_code: string | null; is_primary: boolean; timezone: string; latitude: number | string | null; longitude: number | string | null; hours: { weekday: number; opens_at: string; closes_at: string }[] | null }[];
   const brand = (Array.isArray(venue.brand) ? venue.brand[0] : venue.brand) as { name: string; menu_url: string | null } | null;
   const isStaff = !!viewer?.platformRoles.length;
   const { data: canEditRaw } = viewer && !isStaff ? await (await createClient()).rpc("can_edit_place", { p_business: venue.id }) : { data: null };
@@ -336,6 +338,16 @@ export default async function VenuePage({ params, searchParams }: Params) {
       <PlaceLinks businessId={venue.id as string} name={venue.name as string} cityName={citySlug ? findCity(citySlug).name : ""} kind={venue.kind as string}
         website={(venue.website as string | null) ?? null} links={links.get(venue.id as string) ?? []} signedIn={!!viewer} canManage={canManageLinks}
         back={`/venue/${venue.slug}`} saved={linkSaved === "1"} error={linkError ? String(linkError).slice(0, 160) : null} />
+
+      {primary && (
+        <TripPlanner
+          destination={{ name: venue.name as string, lat: primary.latitude == null ? null : Number(primary.latitude), lng: primary.longitude == null ? null : Number(primary.longitude),
+            address: [primary.address_line1, primary.city, primary.region].filter(Boolean).join(", ") || null }}
+          token={publicEnv.NEXT_PUBLIC_MAPBOX_TOKEN ?? null}
+          near={primary.city_slug ? findCity(primary.city_slug).center : null}
+          timezone={primary.timezone}
+        />
+      )}
 
       <section aria-labelledby="menu-h" className="flex flex-col gap-3">
         <h2 id="menu-h" className="text-xl font-bold">Menu &amp; VYBR8 scores</h2>

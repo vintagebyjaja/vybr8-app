@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 
 export function FeedTabs<T extends string>({ tabs, active, base, param = "feed", extra }: { tabs: readonly { key: T; label: string }[]; active: T; base: string; param?: string; extra?: string }) {
   return (

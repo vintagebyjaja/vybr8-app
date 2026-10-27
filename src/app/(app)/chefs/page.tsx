@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { DemoBadge } from "@/components/ui/DemoBadge";
 import { CHEF_SERVICES, SERVICE_LABELS, parseChefFilters, priceSummary } from "@/domain/chefs/chefs";
 import { CITIES } from "@/domain/map/map";

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { CITIES, findCity } from "@/domain/map/map";
 import {
   directionsUrl, formatDayTime, formatTime, formatWindow, parseTruckFilter, postedAgo, SOURCE_LABEL, STOP_STATUS_LABEL, TRUCK_FILTERS, type TruckFilter,

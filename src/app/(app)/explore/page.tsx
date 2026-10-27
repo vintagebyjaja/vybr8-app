@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { CreatorBadge } from "@/components/posts/Badges";
 import { FeedTabs } from "@/components/posts/FeedTabs";
 import { PostButton } from "@/components/posts/PostButton";

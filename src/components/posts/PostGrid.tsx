@@ -1,5 +1,5 @@
 import Image from "next/image";
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import type { FeedPost } from "@/domain/posts/feed-types";
 import { formatRating } from "@/domain/posts/posts";
 

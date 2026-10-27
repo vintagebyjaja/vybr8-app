@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { CraveSearch } from "@/components/cravezone/CraveSearch";
 import { CravingGrid } from "@/components/cravezone/CravingGrid";
 import { getCravingCategories } from "@/server/cravezone";

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { notFound } from "next/navigation";
 import { ApprovedBadge } from "@/components/places/ApprovedBadge";
 import { ProofUpload } from "@/components/places/ProofUpload";

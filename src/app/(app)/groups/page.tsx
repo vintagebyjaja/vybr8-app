@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { GroupFaces } from "@/components/groups/GroupFaces";
 import { TasteForm } from "@/components/groups/TasteForm";
 import { GROUP_KINDS, GROUP_KIND_KEYS, ageOn } from "@/domain/groups/groups";

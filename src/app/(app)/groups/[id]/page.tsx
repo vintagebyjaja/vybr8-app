@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { PlacePicker } from "@/components/places/PlacePicker";
 import { notFound } from "next/navigation";
 import { Avatar } from "@/components/ui/Avatar";

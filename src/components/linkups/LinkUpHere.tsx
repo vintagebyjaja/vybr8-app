@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 
 /** "Link Up here": start a Link Up at this place, for friends, anyone (18+) or just the people you invite. */
 export function LinkUpHere({ venueSlug, signedIn, isAdult, compact = false }: { venueSlug: string; signedIn: boolean; isAdult: boolean; compact?: boolean }) {

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { CraveMap, type CravePin } from "@/components/cravezone/CraveMap";
 import { CraveItemCard, CravePlaceCard } from "@/components/cravezone/CraveResultCard";
 import { CraveSearch } from "@/components/cravezone/CraveSearch";

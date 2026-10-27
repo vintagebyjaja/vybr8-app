@@ -12,6 +12,9 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   images: {
+    // Served as-is: VYBR8's own images are already sized .webp files, and on Cloudflare every resized
+    // image would be another server request. Review photos come straight from Supabase Storage.
+    unoptimized: true,
     // Review photos and business images are served from Supabase Storage.
     remotePatterns: supabaseHost
       ? [{ protocol: "https", hostname: supabaseHost, pathname: "/storage/v1/object/public/**" }]

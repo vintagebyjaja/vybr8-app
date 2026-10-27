@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { notFound } from "next/navigation";
 import { LinkUpHere } from "@/components/linkups/LinkUpHere";
 import { ShareButton } from "@/components/share/ShareButton";

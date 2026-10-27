@@ -1,5 +1,5 @@
 import Image from "next/image";
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { Suspense } from "react";
 import { ApprovedBadge } from "@/components/places/ApprovedBadge";
 import { KIND_TONE, KindIcon } from "@/components/places/KindIcon";

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { redirect } from "next/navigation";
 import { AlertsLink } from "@/components/nav/AlertsLink";
 import { BackButton } from "@/components/nav/BackButton";

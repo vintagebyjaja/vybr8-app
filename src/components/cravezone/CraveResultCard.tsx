@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- signed storage URLs */
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { KIND_TONE, KindIcon } from "@/components/places/KindIcon";
 import { formatCents, type CravingCategory } from "@/domain/cravezone/cravezone";
 import { formatDistance } from "@/domain/places/eat";

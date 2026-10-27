@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { RateItem } from "@/components/ratings/RateItem";
 import type { MenuItemView } from "@/domain/menus/menus";
 import { RankBadge } from "@/components/charts/RankBadge";

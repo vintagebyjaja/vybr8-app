@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { Button } from "@/components/ui/Button";
 import { timeAgo } from "@/domain/posts/posts";
 import { requireViewer } from "@/server/auth";

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { notFound } from "next/navigation";
 import { SUPPORT_EMAIL, topicLabel } from "@/domain/support/support";
 import { createClient } from "@/lib/supabase/server";

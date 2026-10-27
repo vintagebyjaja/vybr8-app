@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { CreatorBadge } from "@/components/posts/Badges";
 import { createClient } from "@/lib/supabase/server";
 import { requireViewer } from "@/server/auth";

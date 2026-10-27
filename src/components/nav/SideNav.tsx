@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { usePathname } from "next/navigation";
 import { ExploreIcon, HealthIcon, HomeIcon, InfinityIcon, ProfileIcon } from "./icons";
 import { NAV_ITEMS, isActive } from "./nav-items";

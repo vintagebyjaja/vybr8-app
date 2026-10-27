@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 
 export function RangeTabs({ active, hrefFor }: { active: "day" | "week" | "month"; hrefFor: (r: string) => string }) {
   return (

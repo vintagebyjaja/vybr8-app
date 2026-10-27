@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { MoonIcon } from "@/components/health/SleepGauge";
 import { formatClock, formatDuration } from "@/domain/health/health";
 

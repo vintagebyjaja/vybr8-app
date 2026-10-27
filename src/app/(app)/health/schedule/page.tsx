@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { Button } from "@/components/ui/Button";
 import { ACTIVITY_LEVELS, DAY_PARTS, WEEKDAYS, daysLabel, formatClock, sleepMinutes, formatDuration } from "@/domain/health/health";
 import { requireViewer } from "@/server/auth";
