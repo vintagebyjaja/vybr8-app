@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 
 export function PostButton({ href = "/post/new", label = "Post your plate", className = "" }: { href?: string; label?: string; className?: string }) {
   return (

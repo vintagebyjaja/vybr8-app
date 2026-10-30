@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { ComingSoon } from "@/components/ui/ComingSoon";
 
 export const metadata = { title: "VYBR8 for Business" };

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { LinkupForm } from "@/components/linkups/LinkupForm";
 import { CITIES, findCity } from "@/domain/map/map";
 import { createClient } from "@/lib/supabase/server";

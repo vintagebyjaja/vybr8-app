@@ -1,5 +1,5 @@
 import { Avatar } from "@/components/ui/Avatar";
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { TasteForm } from "@/components/groups/TasteForm";
 import { getMyTaste } from "@/server/groups";
 import { notFound, redirect } from "next/navigation";

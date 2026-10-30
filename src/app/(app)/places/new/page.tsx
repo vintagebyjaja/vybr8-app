@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { UseMyLocation } from "@/components/places/UseMyLocation";
 import { Button } from "@/components/ui/Button";
 import { CITIES } from "@/domain/map/map";

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import {
   AVAILABILITY_LABEL, CHEF_SERVICES, PRICE_TYPES, PRICE_TYPE_LABEL, SERVICE_LABELS, SOCIAL_KINDS, VERIFICATION_METHODS, packagePrice, readNotice,
   type SocialKind,

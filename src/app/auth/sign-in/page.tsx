@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { safeNext } from "@/server/safe-redirect";
 import { signIn } from "../actions";
 import { AuthForm } from "../AuthForm";

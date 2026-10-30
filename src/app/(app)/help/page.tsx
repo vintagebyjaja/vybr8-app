@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { Button } from "@/components/ui/Button";
 import { FAQ, SUPPORT_EMAIL, SUPPORT_TOPICS, topicLabel } from "@/domain/support/support";
 import { createClient } from "@/lib/supabase/server";

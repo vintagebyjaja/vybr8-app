@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { ApprovedBadge } from "@/components/places/ApprovedBadge";
 import { placeTitle } from "@/domain/places/places";
 import { SearchBox } from "@/components/search/SearchBox";

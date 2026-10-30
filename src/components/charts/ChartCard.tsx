@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { chartHeading, type Chart } from "@/domain/charts/charts";
 
 /** One ranked list. `big` is the full-width VYBR8 25 / Top 25 look. */

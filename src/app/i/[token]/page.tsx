@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { GroupChat } from "@/components/linkups/GroupChat";
 import { GuestAcceptForm } from "@/components/linkups/GuestAcceptForm";
 import { formatWhen, OCCASIONS, type Occasion } from "@/domain/linkups/linkups";

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { notFound } from "next/navigation";
 import { ProofUpload } from "@/components/places/ProofUpload";
 import { Button } from "@/components/ui/Button";

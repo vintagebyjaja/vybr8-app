@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { notFound } from "next/navigation";
 import { GroupChat } from "@/components/linkups/GroupChat";
 import { GuestLinkMaker } from "@/components/linkups/GuestLinkMaker";
@@ -7,8 +7,11 @@ import { OCCASIONS, formatWhen } from "@/domain/linkups/linkups";
 import { requireViewer } from "@/server/auth";
 import { getInvitableFriends, getLinkup, toChat } from "@/server/linkups";
 import { createClient } from "@/lib/supabase/server";
+import { TripPlanner } from "@/components/trips/TripPlanner";
+import { findCity } from "@/domain/map/map";
+import { publicEnv } from "@/config/public-env";
 import {
-  approveRequest, cancelLinkup, createGuestLink, inviteFriend, joinLinkup, leaveLinkup, loadChat, removeMember, revokeGuestInvite, sendChat,
+  approveRequest, cancelLinkup, createGuestLink, inviteFriend, joinLinkup, leaveLinkup, loadChat, loadEtas, removeMember, revokeGuestInvite, sendChat, shareEta, stopEta,
 } from "../actions";
 
 export const metadata = { title: "Link Up" };
@@ -28,10 +31,14 @@ export default async function LinkupPage({ params, searchParams }: Props) {
   const supabase = await createClient();
   const { data: meRow } = await supabase.from("profiles").select("avatar_url").eq("id", viewer.id).single();
   const hasPhoto = !!meRow?.avatar_url;
-  const [friends, chat] = await Promise.all([
+  const inGroup = l.isHost || l.myStatus === "going";
+  const [friends, chat, etas] = await Promise.all([
     l.isHost && !l.isOver ? getInvitableFriends(viewer, id) : Promise.resolve([]),
     l.canChat ? supabase.rpc("linkup_chat", { p_linkup: id }).then((r) => toChat(r.data)) : Promise.resolve([]),
+    inGroup && !l.isOver ? loadEtas(id) : Promise.resolve([]),
   ]);
+  // ETAs open 4 hours before the start.
+  const etaOpen = l.status === "active" && !l.isOver && new Date(l.startsAt).getTime() - Date.now() < 4 * 3600_000;
   const going = l.members.filter((m) => m.status === "going");
   const requests = l.members.filter((m) => m.status === "requested");
   const invited = l.members.filter((m) => m.status === "invited");
@@ -144,6 +151,21 @@ export default async function LinkupPage({ params, searchParams }: Props) {
         )}
         {l.isHost && invited.length > 0 && <p className="text-xs text-faint">Invited: {invited.map((m) => m.name).join(", ")}</p>}
       </section>
+
+      {!l.isOver && l.status === "active" && (
+        <TripPlanner
+          destination={{ name: l.business?.name ?? l.place ?? l.title, lat: l.business?.lat ?? null, lng: l.business?.lng ?? null,
+            address: l.business?.address ?? (l.place ? `${l.place}, ${l.cityName}` : null) }}
+          token={publicEnv.NEXT_PUBLIC_MAPBOX_TOKEN ?? null}
+          near={findCity(l.citySlug).center}
+          startsAt={l.startsAt}
+          timezone={l.timezone}
+          eta={inGroup && etaOpen ? { initial: etas, canShare: true, load: loadEtas.bind(null, l.id), share: shareEta.bind(null, l.id), stop: stopEta.bind(null, l.id) } : null}
+        />
+      )}
+      {inGroup && !etaOpen && !l.isOver && l.status === "active" && (
+        <p className="-mt-3 text-xs text-faint">Sharing ETAs with the group opens 4 hours before the Link Up.</p>
+      )}
 
       {l.canChat && (
         <GroupChat

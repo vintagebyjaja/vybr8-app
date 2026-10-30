@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { notFound } from "next/navigation";
 import { CreatorBadge } from "@/components/posts/Badges";
 import { CreatorQueue } from "@/components/team/CreatorQueue";

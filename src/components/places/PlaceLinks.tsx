@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { COMMUNITY_KINDS, LINK_INFO, LINK_KINDS, searchLinks, type LinkGroup, type LinkKind } from "@/domain/places/links";
 import type { PlaceLink } from "@/server/place-links";
 import { addPlaceLink, removePlaceLink } from "@/app/(app)/venue/link-actions";

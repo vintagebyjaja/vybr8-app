@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { notFound } from "next/navigation";
 import { CITIES } from "@/domain/map/map";
 import { OSM_ATTRIBUTION, OSM_COPYRIGHT_URL, TILE_GRID } from "@/domain/places/osm";

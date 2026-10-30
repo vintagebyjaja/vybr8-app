@@ -171,3 +171,40 @@ export async function sendChat(linkupId: string, body: string): Promise<string |
   }
   return null;
 }
+
+// ── Shared ETAs ("Dee · 12 min away"). Opt-in, ETA only, the group only. ──
+export type GroupEta = { userId: string; name: string; avatarUrl: string | null; minutesAway: number; arrivesAt: string; mode: "drive" | "walk"; updatedAt: string; mine: boolean };
+
+export async function loadEtas(linkupId: string): Promise<GroupEta[]> {
+  const l = id.parse(linkupId);
+  const viewer = await requireViewer(`/vybe/${l}`);
+  const supabase = await createClient();
+  const { data } = await supabase.from("linkup_etas")
+    .select("user_id, minutes_away, arrives_at, mode, updated_at, who:profiles!linkup_etas_user_id_fkey ( username, display_name, avatar_url )")
+    .eq("linkup_id", l).order("arrives_at");
+  type Row = { user_id: string; minutes_away: number; arrives_at: string; mode: "drive" | "walk"; updated_at: string;
+    who: { username: string; display_name: string | null; avatar_url: string | null } | { username: string; display_name: string | null; avatar_url: string | null }[] | null };
+  return ((data ?? []) as unknown as Row[]).map((r) => {
+    const w = Array.isArray(r.who) ? r.who[0] : r.who;
+    return { userId: r.user_id, name: w?.display_name ?? w?.username ?? "Someone", avatarUrl: w?.avatar_url ?? null, minutesAway: r.minutes_away,
+      arrivesAt: r.arrives_at, mode: r.mode, updatedAt: r.updated_at, mine: r.user_id === viewer.id };
+  });
+}
+
+export async function shareEta(linkupId: string, minutes: number, mode: "drive" | "walk"): Promise<string | null> {
+  const l = id.parse(linkupId);
+  await requireViewer(`/vybe/${l}`);
+  const m = z.number().int().min(0).max(1440).safeParse(Math.round(minutes));
+  if (!m.success || (mode !== "drive" && mode !== "walk")) return "That ETA doesn't look right.";
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("share_linkup_eta", { p_linkup: l, p_minutes: m.data, p_mode: mode });
+  if (error) return error.message.includes("4 hours") ? "You can share your ETA starting 4 hours before the Link Up." : "Couldn't share your ETA.";
+  return null;
+}
+
+export async function stopEta(linkupId: string): Promise<void> {
+  const l = id.parse(linkupId);
+  await requireViewer(`/vybe/${l}`);
+  const supabase = await createClient();
+  await supabase.rpc("stop_linkup_eta", { p_linkup: l });
+}

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { approveCreator, confirmProof, rejectCreator } from "@/app/(app)/team/actions";
 import { CreatorBadge } from "@/components/posts/Badges";
 import { Button } from "@/components/ui/Button";

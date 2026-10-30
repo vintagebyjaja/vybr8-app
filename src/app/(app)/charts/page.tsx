@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { ChartCard } from "@/components/charts/ChartCard";
 import { CityChips } from "@/components/charts/CityChips";
 import { CHART_SIZE, CHART_TABS, parseTab } from "@/domain/charts/charts";

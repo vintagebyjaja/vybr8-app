@@ -9,15 +9,17 @@ export async function getMenu(businessId: string, viewerId: string | null): Prom
   const supabase = await createClient();
   const { data } = await supabase
     .from("menu_items")
-    .select("id, name, description, category, section, dish_type, price_cents, is_alcoholic, is_available, sold_out_until, position, credits:chef_menu_item_attributions ( attribution_type, verification_status, end_date, chef:chef_profiles ( slug, professional_name ) )")
+    .select("id, name, description, category, section, dish_type, price_cents, is_alcoholic, is_available, sold_out_until, position, source, last_verified, price_is_local, credits:chef_menu_item_attributions ( attribution_type, verification_status, end_date, chef:chef_profiles ( slug, professional_name ) )")
     .eq("business_id", businessId)
     .order("position");
   type Row = {
     id: string; name: string; description: string | null; category: "food" | "drink"; section: string | null; dish_type: string | null; price_cents: number | null;
     is_alcoholic: boolean; is_available: boolean; sold_out_until: string | null;
+    source: MenuItemView["source"] | null; last_verified: string | null; price_is_local: boolean | null;
     credits: { attribution_type: string; verification_status: string; end_date: string | null; chef: { slug: string; professional_name: string } | null }[];
   };
-  const rows = (data ?? []) as unknown as Row[];
+  // Items dropped from a refreshed chain or imported menu stay in the database (their ratings are kept) but aren't shown.
+  const rows = ((data ?? []) as unknown as Row[]).filter((r) => r.is_available || (r.source !== "brand" && r.source !== "import"));
   if (!rows.length) return [];
   const ids = rows.map((r) => r.id);
   const [{ data: stats }, { data: mine }] = await Promise.all([
@@ -44,6 +46,7 @@ export async function getMenu(businessId: string, viewerId: string | null): Prom
     myCount: mineBy.get(r.id)?.count ?? 0,
     myAvg: mineBy.has(r.id) ? Math.round((mineBy.get(r.id)!.sum / mineBy.get(r.id)!.count) * 10) / 10 : null,
     myRatedToday: mineBy.get(r.id)?.latestDay === ratingDay,
+    source: r.source ?? "owner", lastVerified: r.last_verified, priceIsLocal: !!r.price_is_local,
     chefs: r.credits
       .filter((c) => c.chef && c.verification_status !== "self_reported" && (!c.end_date || c.end_date >= today))
       .map((c) => ({ slug: c.chef!.slug, name: c.chef!.professional_name, type: c.attribution_type })),

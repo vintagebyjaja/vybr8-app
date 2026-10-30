@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { WINDOW_LABEL } from "@/domain/birthday/birthday";
 import { PERK_TYPE_LABEL, type BirthdayPerk } from "@/domain/birthday/perks";
 import { DemoBadge } from "@/components/ui/DemoBadge";

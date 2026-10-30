@@ -1,5 +1,5 @@
 import Image from "next/image";
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { CitySkyline } from "@/components/home/CitySkyline";
 
 // Real city photos (1400×700 WebP in /public/cities). Any city without one falls back to the drawn skyline.

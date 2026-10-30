@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import {
   addMenuItem, addStop, deleteStop, endLive, markSoldOut, saveTruckProfile, updateStopStatus,
 } from "@/app/(app)/food-trucks/actions";

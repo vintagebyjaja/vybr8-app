@@ -1,5 +1,5 @@
 import Image from "next/image";
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { VybeWave } from "@/components/brand/VybeWave";
 import { VybeMap } from "@/components/map/VybeMap";
 import { VybeStatus } from "@/components/map/VybeStatus";

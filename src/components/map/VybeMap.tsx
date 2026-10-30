@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { setCity } from "@/app/(app)/map-actions";
 import { StreetMap, type StreetPin } from "@/components/map/StreetMap";

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 
 type Tile = { href: string; label: string; tone: string; icon: keyof typeof ICONS };
 

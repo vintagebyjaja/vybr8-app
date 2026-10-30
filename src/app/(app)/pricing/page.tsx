@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { BUSINESS_PLANS, CONSUMER_PLANS, PAID_PLACEMENT_RULES, formatPrice, type PlanCard } from "@/domain/plans/plans";
 import { getViewer } from "@/server/auth";
 import { getPlan } from "@/server/entitlements";

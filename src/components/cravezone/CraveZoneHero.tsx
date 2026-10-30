@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import type { CravingCategory } from "@/domain/cravezone/cravezone";
 import { tone } from "./tones";
 

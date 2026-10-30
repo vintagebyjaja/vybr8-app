@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { SLOT_LABEL, addDays, dayLabel, formatClock, isYmd, type DayType } from "@/domain/health/health";
 import { findCity } from "@/domain/map/map";
 import { NUTRITION_SOURCE_LABEL, type NutritionSource } from "@/domain/nutrition/nutrition";

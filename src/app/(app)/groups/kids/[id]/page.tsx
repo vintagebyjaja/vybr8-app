@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { notFound } from "next/navigation";
 import { TasteForm } from "@/components/groups/TasteForm";
 import { TransferCode } from "@/components/groups/TransferCode";

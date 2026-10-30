@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 
 const LINKS = [
   { href: "/eat", label: "What to eat", hot: true },

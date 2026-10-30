@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { LinkupCardView } from "@/components/linkups/LinkupCardView";
 import { CITIES, findCity } from "@/domain/map/map";
 import { requireViewer } from "@/server/auth";

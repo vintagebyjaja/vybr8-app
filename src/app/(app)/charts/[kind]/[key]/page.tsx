@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { notFound } from "next/navigation";
 import { ChartCard } from "@/components/charts/ChartCard";
 import { CityChips } from "@/components/charts/CityChips";
